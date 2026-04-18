@@ -20,6 +20,7 @@ import (
 // +kubebuilder:webhook:path=/validate-kanary-io-v1alpha1-canary,mutating=false,failurePolicy=fail,sideEffects=None,groups=kanary.io,resources=canaries,verbs=create;update,versions=v1alpha1,name=vcanary.kb.io,admissionReviewVersions=v1
 
 // CanaryWebhook implements both the Defaulter and Validator interfaces.
+// +kubebuilder:object:generate=false
 type CanaryWebhook struct {
 	APIReader client.Reader
 }

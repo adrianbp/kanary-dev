@@ -140,10 +140,18 @@ func (r *Router) Status(ctx context.Context, canary *kanaryv1alpha1.Canary) (dom
 		return domain.TrafficStatus{}, kerr.Retryable(fmt.Errorf("get sibling ingress: %w", err))
 	}
 
-	w, _ := strconv.Atoi(sibling.Annotations[AnnotationCanaryWeight])
+	weight := int32(0)
+	if raw := sibling.Annotations[AnnotationCanaryWeight]; raw != "" {
+		if parsed, err := strconv.ParseInt(raw, 10, 32); err == nil {
+			w := int32(parsed)
+			if w >= 0 && w <= 100 {
+				weight = w
+			}
+		}
+	}
 	return domain.TrafficStatus{
-		StableWeight: int32(100 - w),
-		CanaryWeight: int32(w),
+		StableWeight: 100 - weight,
+		CanaryWeight: weight,
 		ObservedAt:   time.Now(),
 	}, nil
 }

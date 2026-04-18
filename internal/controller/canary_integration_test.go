@@ -17,8 +17,9 @@ import (
 )
 
 const (
-	timeout  = 15 * time.Second
-	interval = 250 * time.Millisecond
+	timeout        = 15 * time.Second
+	interval       = 250 * time.Millisecond
+	annotationTrue = "true"
 )
 
 func randSuffix() string { return fmt.Sprintf("%05d", rand.Intn(99999)) } //nolint:gosec
@@ -115,7 +116,7 @@ var _ = Describe("Canary controller", func() {
 			c := &kanaryv1alpha1.Canary{}
 			Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
 			patch := client.MergeFrom(c.DeepCopy())
-			c.Annotations[kanaryv1alpha1.AnnotationPromote] = "true"
+			c.Annotations[kanaryv1alpha1.AnnotationPromote] = annotationTrue
 			Expect(k8sClient.Patch(ctx, c, patch)).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -146,7 +147,7 @@ var _ = Describe("Canary controller", func() {
 			c := &kanaryv1alpha1.Canary{}
 			Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
 			patch := client.MergeFrom(c.DeepCopy())
-			c.Annotations[kanaryv1alpha1.AnnotationAbort] = "true"
+			c.Annotations[kanaryv1alpha1.AnnotationAbort] = annotationTrue
 			Expect(k8sClient.Patch(ctx, c, patch)).To(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -178,8 +179,8 @@ var _ = Describe("Canary controller", func() {
 			c := &kanaryv1alpha1.Canary{}
 			Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
 			patch := client.MergeFrom(c.DeepCopy())
-			c.Annotations[kanaryv1alpha1.AnnotationPaused] = "true"
-			c.Annotations[kanaryv1alpha1.AnnotationPromote] = "true"
+			c.Annotations[kanaryv1alpha1.AnnotationPaused] = annotationTrue
+			c.Annotations[kanaryv1alpha1.AnnotationPromote] = annotationTrue
 			Expect(k8sClient.Patch(ctx, c, patch)).To(Succeed())
 
 			Consistently(func(g Gomega) {

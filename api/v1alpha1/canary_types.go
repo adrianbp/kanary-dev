@@ -60,8 +60,8 @@ const (
 type TrafficProviderType string
 
 const (
-	TrafficProviderNginx           TrafficProviderType = "nginx"
-	TrafficProviderOpenShiftRoute  TrafficProviderType = "openshift-route"
+	TrafficProviderNginx          TrafficProviderType = "nginx"
+	TrafficProviderOpenShiftRoute TrafficProviderType = "openshift-route"
 )
 
 // MetricProviderType selects the metric backend.

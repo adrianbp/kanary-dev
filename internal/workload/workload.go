@@ -32,6 +32,8 @@ import (
 	kerr "github.com/adrianbp/kanary-dev/internal/errors"
 )
 
+const revisionCanary = "canary"
+
 // Reconciler creates and maintains the canary workload objects.
 type Reconciler struct {
 	c      client.Client
@@ -196,7 +198,7 @@ func buildCanaryDeployment(
 	if spec.Template.Labels == nil {
 		spec.Template.Labels = make(map[string]string)
 	}
-	spec.Template.Labels[kanaryv1alpha1.LabelRevision] = "canary"
+	spec.Template.Labels[kanaryv1alpha1.LabelRevision] = revisionCanary
 
 	// Extend selector to match the new label.
 	if spec.Selector == nil {
@@ -205,7 +207,7 @@ func buildCanaryDeployment(
 		sel := maps.Clone(spec.Selector.MatchLabels)
 		spec.Selector = &metav1.LabelSelector{MatchLabels: sel}
 	}
-	spec.Selector.MatchLabels[kanaryv1alpha1.LabelRevision] = "canary"
+	spec.Selector.MatchLabels[kanaryv1alpha1.LabelRevision] = revisionCanary
 
 	d := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -263,7 +265,7 @@ func buildCanaryService(
 	if stable.Spec.Selector != nil {
 		sel = maps.Clone(stable.Spec.Selector.MatchLabels)
 	}
-	sel[kanaryv1alpha1.LabelRevision] = "canary"
+	sel[kanaryv1alpha1.LabelRevision] = revisionCanary
 
 	svc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{

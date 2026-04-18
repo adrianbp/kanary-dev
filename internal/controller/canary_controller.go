@@ -232,12 +232,14 @@ func (r *CanaryReconciler) decide(
 			"seeding stable revision"
 	}
 	if stable == observed {
-		if canary.Status.Phase == kanaryv1alpha1.PhaseSucceeded {
-			return domain.DecisionHold, kanaryv1alpha1.PhaseSucceeded, 0,
-				"no new revision"
+		switch canary.Status.Phase {
+		case kanaryv1alpha1.PhaseSucceeded:
+			return domain.DecisionHold, kanaryv1alpha1.PhaseSucceeded, 0, "no new revision"
+		case kanaryv1alpha1.PhaseRolledBack:
+			return domain.DecisionHold, kanaryv1alpha1.PhaseRolledBack, 0, "no new revision after rollback"
+		default:
+			return domain.DecisionHold, kanaryv1alpha1.PhaseIdle, 0, "no new revision"
 		}
-		return domain.DecisionHold, kanaryv1alpha1.PhaseIdle, 0,
-			"no new revision"
 	}
 
 	// Determine current step.
@@ -296,6 +298,9 @@ func (r *CanaryReconciler) updateStatus(
 			canary.Status.CanaryRevision = deploymentRevision(target)
 		}
 	case domain.DecisionRollback:
+		// Accept the current revision as the new stable baseline so subsequent
+		// reconciles don't re-trigger a canary for the same revision diff.
+		canary.Status.StableRevision = deploymentRevision(target)
 		canary.Status.CurrentStepIndex = 0
 		canary.Status.CanaryRevision = ""
 	case domain.DecisionPromote:

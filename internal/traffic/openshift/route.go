@@ -192,7 +192,7 @@ func observedWeights(route *unstructured.Unstructured) (canaryW, stableW int32) 
 	} else if pct64 > 100 {
 		pct64 = 100
 	}
-	pct := int32(pct64) //nolint:gosec // clamped to [0,100] above
+	pct := int32(pct64) //#nosec G115
 	return pct, 100 - pct
 }
 

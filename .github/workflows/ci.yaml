@@ -80,7 +80,7 @@ jobs:
           tags: kanary:ci
 
       - name: Security scan image (Trivy)
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           image-ref: kanary:ci
           vuln-type: os,library

@@ -121,7 +121,8 @@ var _ = Describe("Canary controller", func() {
 			Eventually(func(g Gomega) {
 				c := &kanaryv1alpha1.Canary{}
 				g.Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
-				g.Expect(c.Status.CurrentStepIndex).To(BeNumerically(">=", 1))
+				g.Expect(c.Status.CurrentStepIndex).To(Equal(int32(1)))
+				g.Expect(c.Annotations).NotTo(HaveKey(kanaryv1alpha1.AnnotationPromote))
 			}, timeout, interval).Should(Succeed())
 		})
 
@@ -152,6 +153,7 @@ var _ = Describe("Canary controller", func() {
 				c := &kanaryv1alpha1.Canary{}
 				g.Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
 				g.Expect(c.Status.Phase).To(Equal(kanaryv1alpha1.PhaseRolledBack))
+				g.Expect(c.Annotations).NotTo(HaveKey(kanaryv1alpha1.AnnotationAbort))
 			}, timeout, interval).Should(Succeed())
 		})
 

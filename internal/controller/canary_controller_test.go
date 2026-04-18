@@ -49,6 +49,14 @@ func TestDecide(t *testing.T) {
 			wantWeight:   10,
 		},
 		{
+			name:         "no new revision stays idle until target changes",
+			steps:        baseSteps,
+			status:       kanaryv1alpha1.CanaryStatus{StableRevision: "2", CurrentStepIndex: 0},
+			wantDecision: domain.DecisionHold,
+			wantPhase:    kanaryv1alpha1.PhaseIdle,
+			wantWeight:   0,
+		},
+		{
 			name:         "promote annotation advances step",
 			steps:        baseSteps,
 			annotations:  map[string]string{kanaryv1alpha1.AnnotationPromote: "true"},
@@ -73,6 +81,14 @@ func TestDecide(t *testing.T) {
 			status:       kanaryv1alpha1.CanaryStatus{StableRevision: "1", CurrentStepIndex: 1},
 			wantDecision: domain.DecisionRollback,
 			wantPhase:    kanaryv1alpha1.PhaseRolledBack,
+			wantWeight:   0,
+		},
+		{
+			name:         "invalid step index fails safely",
+			steps:        baseSteps,
+			status:       kanaryv1alpha1.CanaryStatus{StableRevision: "1", CurrentStepIndex: 99},
+			wantDecision: domain.DecisionRollback,
+			wantPhase:    kanaryv1alpha1.PhaseFailed,
 			wantWeight:   0,
 		},
 	}
@@ -119,4 +135,22 @@ func TestRequeueFor(t *testing.T) {
 	require.Equal(t, requeueProgressing, requeueFor(kanaryv1alpha1.PhaseProgressing))
 	require.Equal(t, requeueAwaiting, requeueFor(kanaryv1alpha1.PhaseAwaitingPromotion))
 	require.Equal(t, requeueIdle, requeueFor(kanaryv1alpha1.PhaseSucceeded))
+}
+
+func TestClearCommandAnnotations(t *testing.T) {
+	t.Parallel()
+
+	canary := &kanaryv1alpha1.Canary{
+		ObjectMeta: metav1.ObjectMeta{
+			Annotations: map[string]string{
+				kanaryv1alpha1.AnnotationPromote: "true",
+				kanaryv1alpha1.AnnotationAbort:   "true",
+				"keep":                           "yes",
+			},
+		},
+	}
+
+	clearCommandAnnotations(canary)
+
+	require.Equal(t, map[string]string{"keep": "yes"}, canary.Annotations)
 }

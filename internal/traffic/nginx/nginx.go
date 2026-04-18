@@ -171,6 +171,9 @@ func SiblingIngress(canary *kanaryv1alpha1.Canary, stable *networkingv1.Ingress,
 	// goes to the canary Service instead of the stable one. The canary service
 	// name is derived as "<target>-canary" by convention.
 	canarySvc := canary.Spec.TargetRef.Name + "-canary"
+	if sib.Spec.DefaultBackend != nil && sib.Spec.DefaultBackend.Service != nil {
+		sib.Spec.DefaultBackend.Service.Name = canarySvc
+	}
 	for i := range sib.Spec.Rules {
 		rule := &sib.Spec.Rules[i]
 		if rule.HTTP == nil {

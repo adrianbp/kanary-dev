@@ -66,6 +66,20 @@ func stableIngress(name, namespace string) *networkingv1.Ingress {
 	}
 }
 
+func stableIngressWithDefaultBackend(name, namespace string) *networkingv1.Ingress {
+	return &networkingv1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		Spec: networkingv1.IngressSpec{
+			DefaultBackend: &networkingv1.IngressBackend{
+				Service: &networkingv1.IngressServiceBackend{
+					Name: name,
+					Port: networkingv1.ServiceBackendPort{Number: 80},
+				},
+			},
+		},
+	}
+}
+
 func canaryWithIngress(name, namespace string) *kanaryv1alpha1.Canary {
 	return &kanaryv1alpha1.Canary{
 		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
@@ -102,6 +116,27 @@ func TestReconcile_CreatesSiblingIngress(t *testing.T) {
 	require.Equal(t, "true", sibling.Annotations[nginx.AnnotationCanary])
 	require.Equal(t, "25", sibling.Annotations[nginx.AnnotationCanaryWeight])
 	require.Equal(t, name+"-canary", sibling.Spec.Rules[0].HTTP.Paths[0].Backend.Service.Name)
+}
+
+func TestReconcile_RewritesDefaultBackend(t *testing.T) {
+	t.Parallel()
+	const (
+		name = "api"
+		ns   = "prod"
+	)
+	stable := stableIngressWithDefaultBackend(name, ns)
+	canary := canaryWithIngress(name, ns)
+	c := fakeClient(t, stable, canary)
+	r := nginx.New(c)
+
+	require.NoError(t, r.Reconcile(context.Background(), canary, 25))
+
+	sibling := &networkingv1.Ingress{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: name + "-kanary", Namespace: ns}, sibling))
+	require.NotNil(t, sibling.Spec.DefaultBackend)
+	require.NotNil(t, sibling.Spec.DefaultBackend.Service)
+	require.Equal(t, name+"-canary", sibling.Spec.DefaultBackend.Service.Name)
 }
 
 func TestReconcile_UpdatesSiblingWeight(t *testing.T) {
@@ -234,9 +269,9 @@ func TestStatus_ReturnsSiblingWeight(t *testing.T) {
 		ns   = "prod"
 	)
 	tests := []struct {
-		weight       int32
-		wantCanary   int32
-		wantStable   int32
+		weight     int32
+		wantCanary int32
+		wantStable int32
 	}{
 		{0, 0, 100},
 		{10, 10, 90},

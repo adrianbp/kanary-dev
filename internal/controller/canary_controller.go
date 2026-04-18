@@ -104,6 +104,9 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{RequeueAfter: requeueIdle}, nil
 	}
 
+	promoteRequested := canary.Annotations[kanaryv1alpha1.AnnotationPromote] == "true"
+	abortRequested := canary.Annotations[kanaryv1alpha1.AnnotationAbort] == "true"
+
 	// Fetch target deployment.
 	target := &appsv1.Deployment{}
 	targetKey := types.NamespacedName{Name: canary.Spec.TargetRef.Name, Namespace: canary.Namespace}
@@ -157,6 +160,14 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
+	if promoteRequested || abortRequested {
+		origMeta := canary.DeepCopy()
+		clearCommandAnnotations(canary)
+		if err := r.Patch(ctx, canary, client.MergeFrom(origMeta)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch command annotations: %w", err)
+		}
+	}
+
 	// --- persist status -----------------------------------------------------
 
 	orig := canary.DeepCopy()
@@ -195,14 +206,22 @@ func (r *CanaryReconciler) decide(
 		return domain.DecisionHold, kanaryv1alpha1.PhaseIdle, 0,
 			"seeding stable revision"
 	}
-	if stable == observed && canary.Status.Phase == kanaryv1alpha1.PhaseSucceeded {
-		return domain.DecisionHold, kanaryv1alpha1.PhaseSucceeded, 0,
+	if stable == observed {
+		if canary.Status.Phase == kanaryv1alpha1.PhaseSucceeded {
+			return domain.DecisionHold, kanaryv1alpha1.PhaseSucceeded, 0,
+				"no new revision"
+		}
+		return domain.DecisionHold, kanaryv1alpha1.PhaseIdle, 0,
 			"no new revision"
 	}
 
 	// Determine current step.
 	stepIdx := int(canary.Status.CurrentStepIndex)
 	steps := canary.Spec.Strategy.Steps
+	if stepIdx < 0 || stepIdx >= len(steps) {
+		return domain.DecisionRollback, kanaryv1alpha1.PhaseFailed, 0,
+			fmt.Sprintf("invalid currentStepIndex=%d for %d steps", stepIdx, len(steps))
+	}
 
 	// Manual promote annotation
 	promote := canary.Annotations[kanaryv1alpha1.AnnotationPromote] == "true"
@@ -317,5 +336,16 @@ func requeueFor(p kanaryv1alpha1.Phase) time.Duration {
 		return requeueAwaiting
 	default:
 		return requeueIdle
+	}
+}
+
+func clearCommandAnnotations(canary *kanaryv1alpha1.Canary) {
+	if len(canary.Annotations) == 0 {
+		return
+	}
+	delete(canary.Annotations, kanaryv1alpha1.AnnotationPromote)
+	delete(canary.Annotations, kanaryv1alpha1.AnnotationAbort)
+	if len(canary.Annotations) == 0 {
+		canary.Annotations = nil
 	}
 }

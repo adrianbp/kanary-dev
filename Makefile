@@ -22,7 +22,7 @@ ENVTEST       := $(LOCALBIN)/setup-envtest
 KUBECTL       ?= kubectl
 
 CONTROLLER_TOOLS_VERSION ?= v0.17.3
-GOLANGCI_LINT_VERSION    ?= v1.60.3
+GOLANGCI_LINT_VERSION    ?= v1.64.8
 ENVTEST_K8S_VERSION      ?= 1.31.0
 
 # -- Build metadata ----------------------------------------------------------
@@ -118,7 +118,7 @@ controller-gen: $(LOCALBIN)
 
 .PHONY: golangci-lint
 golangci-lint: $(LOCALBIN)
-	test -s $(GOLANGCI_LINT) || \
+	test -s $(GOLANGCI_LINT) && $(GOLANGCI_LINT) --version | grep -q $(GOLANGCI_LINT_VERSION) || \
 	  GOBIN=$(LOCALBIN) go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 .PHONY: envtest

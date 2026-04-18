@@ -50,6 +50,7 @@ const (
 	requeueIdle        = 60 * time.Second
 	requeueProgressing = 10 * time.Second
 	requeueAwaiting    = 20 * time.Second
+	annotationTrue     = "true"
 )
 
 // Event reasons — surfaced as Kubernetes Events (SPEC.md §9.3).
@@ -99,13 +100,13 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{RequeueAfter: requeueIdle}, nil
 	}
 	// Paused by operator.
-	if canary.Annotations[kanaryv1alpha1.AnnotationPaused] == "true" {
+	if canary.Annotations[kanaryv1alpha1.AnnotationPaused] == annotationTrue {
 		logger.V(1).Info("canary paused via annotation; skipping")
 		return ctrl.Result{RequeueAfter: requeueIdle}, nil
 	}
 
-	promoteRequested := canary.Annotations[kanaryv1alpha1.AnnotationPromote] == "true"
-	abortRequested := canary.Annotations[kanaryv1alpha1.AnnotationAbort] == "true"
+	promoteRequested := canary.Annotations[kanaryv1alpha1.AnnotationPromote] == annotationTrue
+	abortRequested := canary.Annotations[kanaryv1alpha1.AnnotationAbort] == annotationTrue
 
 	// Fetch target deployment.
 	target := &appsv1.Deployment{}
@@ -185,9 +186,8 @@ func (r *CanaryReconciler) decide(
 	canary *kanaryv1alpha1.Canary,
 	target *appsv1.Deployment,
 ) (decision domain.StepDecision, nextPhase kanaryv1alpha1.Phase, weight int32, reason string) {
-
 	// Abort annotation wins over everything.
-	if canary.Annotations[kanaryv1alpha1.AnnotationAbort] == "true" {
+	if canary.Annotations[kanaryv1alpha1.AnnotationAbort] == annotationTrue {
 		return domain.DecisionRollback, kanaryv1alpha1.PhaseRolledBack, 0,
 			"abort requested via annotation"
 	}
@@ -224,7 +224,7 @@ func (r *CanaryReconciler) decide(
 	}
 
 	// Manual promote annotation
-	promote := canary.Annotations[kanaryv1alpha1.AnnotationPromote] == "true"
+	promote := canary.Annotations[kanaryv1alpha1.AnnotationPromote] == annotationTrue
 
 	switch canary.Spec.Strategy.Mode {
 	case kanaryv1alpha1.StrategyProgressive:

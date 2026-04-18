@@ -1,0 +1,73 @@
+image:
+  repository: ghcr.io/adrianbp/kanary
+  tag: ""           # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+# scope controls which namespaces the operator watches and which RBAC is generated.
+#   cluster       — ClusterRole + ClusterRoleBinding, watches all namespaces
+#   namespaced    — Role + RoleBinding in the release namespace only
+#   multi-namespace — Role + RoleBinding per listed namespace
+scope:
+  mode: namespaced
+  namespaces: []    # only used when mode=multi-namespace
+
+# replicaCount should stay 1 unless leaderElection is enabled.
+replicaCount: 1
+
+leaderElection:
+  enabled: false
+
+providers:
+  traffic:
+    nginx:
+      enabled: true
+    openshiftRoute:
+      enabled: false
+  metrics:
+    prometheus:
+      enabled: true
+    datadog:
+      enabled: false
+    dynatrace:
+      enabled: false
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+observability:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    scrapeTimeout: 10s
+  prometheusRule:
+    enabled: true
+
+webhooks:
+  enabled: true
+  certManager:
+    enabled: true
+
+service:
+  metricsPort: 8080
+  healthPort: 8081
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+  readOnlyRootFilesystem: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

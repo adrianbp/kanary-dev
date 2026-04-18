@@ -1,0 +1,32 @@
+{{- if .Values.observability.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "kanary.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kanary.labels" . | nindent 4 }}
+spec:
+  groups:
+    - name: kanary.rules
+      rules:
+        - alert: KanaryReconcileErrors
+          expr: |
+            increase(controller_runtime_reconcile_errors_total{controller="canary"}[5m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Kanary reconcile errors detected"
+            description: "Controller has encountered {{ "{{" }} $value {{ "}}" }} reconcile errors in the last 5 minutes."
+
+        - alert: KanaryCanaryStuck
+          expr: |
+            (time() - kanary_canary_last_transition_seconds{phase="AwaitingPromotion"}) > 3600
+          for: 0m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Canary {{ "{{" }} $labels.name {{ "}}" }} stuck awaiting promotion"
+            description: "Canary has been in AwaitingPromotion for over 1 hour."
+{{- end }}

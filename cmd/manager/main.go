@@ -104,6 +104,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err = (&kanaryv1alpha1.CanaryWebhook{
+		APIReader: mgr.GetAPIReader(),
+	}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to register webhook", "webhook", "Canary")
+		os.Exit(1)
+	}
+
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
 		setupLog.Error(err, "unable to set up health check")
 		os.Exit(1)

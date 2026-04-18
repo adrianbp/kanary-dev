@@ -1,0 +1,68 @@
+name: Kanary Standard Deploy
+description: >
+  Publica uma nova imagem no Deployment sem usar canary (rollout nativo do K8s).
+  Desabilita temporariamente o Canary associado para não interferir no rollout.
+author: Kanary Authors
+
+inputs:
+  kubeconfig:
+    description: Conteúdo do kubeconfig.
+    required: true
+  namespace:
+    description: Namespace do Deployment alvo.
+    required: true
+  deployment:
+    description: Nome do Deployment alvo.
+    required: true
+  image:
+    description: Imagem completa a aplicar.
+    required: true
+  enable-canary:
+    description: "Reativar Canary após o rollout? (true|false)."
+    required: false
+    default: "true"
+  timeout:
+    description: Timeout do rollout nativo.
+    required: false
+    default: 10m
+
+runs:
+  using: composite
+  steps:
+    - name: Write kubeconfig
+      shell: bash
+      run: |
+        set -euo pipefail
+        tmp=$(mktemp)
+        printf '%s' "${{ inputs.kubeconfig }}" > "$tmp"
+        echo "KUBECONFIG=$tmp" >> "$GITHUB_ENV"
+
+    - name: Disable canary for target (if exists)
+      shell: bash
+      run: |
+        set -euo pipefail
+        if kubectl -n "${{ inputs.namespace }}" get canary "${{ inputs.deployment }}" >/dev/null 2>&1; then
+          kubectl -n "${{ inputs.namespace }}" annotate canary "${{ inputs.deployment }}" \
+            kanary.io/canary-enabled=false --overwrite
+        fi
+
+    - name: Standard rollout
+      shell: bash
+      run: |
+        set -euo pipefail
+        kubectl -n "${{ inputs.namespace }}" set image \
+          deployment/"${{ inputs.deployment }}" \
+          '*=${{ inputs.image }}'
+        kubectl -n "${{ inputs.namespace }}" rollout status \
+          deployment/"${{ inputs.deployment }}" \
+          --timeout="${{ inputs.timeout }}"
+
+    - name: Re-enable canary (optional)
+      if: ${{ inputs.enable-canary == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        if kubectl -n "${{ inputs.namespace }}" get canary "${{ inputs.deployment }}" >/dev/null 2>&1; then
+          kubectl -n "${{ inputs.namespace }}" annotate canary "${{ inputs.deployment }}" \
+            kanary.io/canary-enabled=true --overwrite
+        fi

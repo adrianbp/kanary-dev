@@ -1,0 +1,22 @@
+# Kubebuilder v4 PROJECT file
+# https://book.kubebuilder.io/reference/project-config.html
+domain: kanary.io
+layout:
+- go.kubebuilder.io/v4
+projectName: kanary
+repo: github.com/adrianbp/kanary-dev
+version: "3"
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: kanary.io
+  group: kanary
+  kind: Canary
+  path: github.com/adrianbp/kanary-dev/api/v1alpha1
+  version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1

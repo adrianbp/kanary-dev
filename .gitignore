@@ -1,0 +1,24 @@
+# Go build artifacts
+bin/
+cover.out
+*.test
+*.out
+*.prof
+
+# Kubebuilder generated manifests (keep CRDs under config/)
+# (uncomment if you move to committed generated manifests only)
+# config/crd/bases/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.*

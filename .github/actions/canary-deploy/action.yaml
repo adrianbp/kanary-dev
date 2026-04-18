@@ -1,0 +1,94 @@
+name: Kanary Canary Deploy
+description: >
+  Publica uma nova imagem num Deployment e aguarda o operator Kanary avançar
+  ou concluir o rollout. Suporta modo manual (espera promoção) e progressivo.
+author: Kanary Authors
+
+inputs:
+  kubeconfig:
+    description: Conteúdo do kubeconfig (normalmente um secret).
+    required: true
+  namespace:
+    description: Namespace do Deployment alvo.
+    required: true
+  deployment:
+    description: Nome do Deployment alvo.
+    required: true
+  image:
+    description: Imagem completa (repo:tag) a aplicar.
+    required: true
+  strategy:
+    description: "Modo de rollout: manual ou progressive."
+    required: false
+    default: manual
+  wait-for:
+    description: "O que esperar: promotion | completion | none."
+    required: false
+    default: completion
+  timeout:
+    description: Timeout total do rollout.
+    required: false
+    default: 30m
+
+runs:
+  using: composite
+  steps:
+    - name: Write kubeconfig
+      shell: bash
+      run: |
+        set -euo pipefail
+        tmp=$(mktemp)
+        printf '%s' "${{ inputs.kubeconfig }}" > "$tmp"
+        echo "KUBECONFIG=$tmp" >> "$GITHUB_ENV"
+
+    - name: Ensure canary is enabled
+      shell: bash
+      run: |
+        set -euo pipefail
+        kubectl -n "${{ inputs.namespace }}" annotate canary \
+          "${{ inputs.deployment }}" \
+          kanary.io/canary-enabled=true --overwrite
+
+    - name: Patch Canary strategy.mode
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${{ inputs.strategy }}" in
+          manual)      mode=Manual ;;
+          progressive) mode=Progressive ;;
+          *) echo "unknown strategy: ${{ inputs.strategy }}"; exit 1 ;;
+        esac
+        kubectl -n "${{ inputs.namespace }}" patch canary "${{ inputs.deployment }}" \
+          --type=merge -p "{\"spec\":{\"strategy\":{\"mode\":\"$mode\"}}}"
+
+    - name: Set new image on Deployment
+      shell: bash
+      run: |
+        set -euo pipefail
+        kubectl -n "${{ inputs.namespace }}" set image \
+          deployment/"${{ inputs.deployment }}" \
+          '*=${{ inputs.image }}' --record=false
+
+    - name: Wait for desired state
+      shell: bash
+      env:
+        WAIT_FOR: ${{ inputs.wait-for }}
+        TIMEOUT: ${{ inputs.timeout }}
+        NS: ${{ inputs.namespace }}
+        CN: ${{ inputs.deployment }}
+      run: |
+        set -euo pipefail
+        case "$WAIT_FOR" in
+          none) exit 0 ;;
+          promotion)
+            kubectl -n "$NS" wait canary "$CN" \
+              --for=jsonpath='{.status.phase}'=AwaitingPromotion \
+              --timeout="$TIMEOUT"
+            ;;
+          completion)
+            kubectl -n "$NS" wait canary "$CN" \
+              --for=jsonpath='{.status.phase}'=Succeeded \
+              --timeout="$TIMEOUT"
+            ;;
+          *) echo "unknown wait-for: $WAIT_FOR"; exit 1 ;;
+        esac

@@ -42,7 +42,7 @@ help: ## Show this help
 .PHONY: manifests
 manifests: controller-gen ## Generate CRDs and RBAC manifests (config/)
 	$(CONTROLLER_GEN) rbac:roleName=kanary-manager-role \
-	  crd webhook paths="./..." \
+	  crd:allowDangerousTypes=true webhook paths="./..." \
 	  output:crd:artifacts:config=config/crd/bases \
 	  output:rbac:artifacts:config=config/rbac \
 	  output:webhook:artifacts:config=config/webhook

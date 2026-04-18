@@ -298,7 +298,7 @@ func targetPort(s string, fallback int32) intstr.IntOrString {
 		return intstr.FromInt32(fallback)
 	}
 	if i, err := strconv.Atoi(s); err == nil {
-		return intstr.FromInt32(int32(i)) //#nosec G115 -- port numbers fit in int32
+		return intstr.FromInt32(int32(i)) //#nosec G109 -- port numbers fit in int32
 	}
 	return intstr.FromString(s)
 }

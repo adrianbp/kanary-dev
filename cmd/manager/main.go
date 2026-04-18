@@ -33,6 +33,7 @@ import (
 	"github.com/adrianbp/kanary-dev/internal/controller"
 	"github.com/adrianbp/kanary-dev/internal/traffic"
 	"github.com/adrianbp/kanary-dev/internal/traffic/nginx"
+	"github.com/adrianbp/kanary-dev/internal/traffic/openshift"
 )
 
 var (
@@ -93,6 +94,7 @@ func main() {
 	// main.go is the single place that knows about the concrete impls.
 	trafficFactory := traffic.NewFactory()
 	trafficFactory.Register(kanaryv1alpha1.TrafficProviderNginx, nginx.New(mgr.GetClient()))
+	trafficFactory.Register(kanaryv1alpha1.TrafficProviderOpenShiftRoute, openshift.New(mgr.GetClient()))
 
 	if err = (&controller.CanaryReconciler{
 		Client:         mgr.GetClient(),

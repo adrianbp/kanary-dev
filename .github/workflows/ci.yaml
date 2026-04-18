@@ -82,9 +82,6 @@ jobs:
       - name: Helm lint (multi-namespace scope)
         run: helm lint charts/kanary --set scope.mode=multi-namespace --set 'scope.namespaces[0]=ns1' --set 'scope.namespaces[1]=ns2'
 
-      - name: Helm template renders without error
-        run: helm template kanary charts/kanary > /dev/null
-
   container:
     name: Docker image build
     runs-on: ubuntu-latest

@@ -8,6 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,8 +18,8 @@ import (
 )
 
 const (
-	timeout        = 15 * time.Second
-	interval       = 250 * time.Millisecond
+	timeout        = 20 * time.Second
+	interval       = 500 * time.Millisecond
 	annotationTrue = "true"
 )
 
@@ -155,6 +156,64 @@ var _ = Describe("Canary controller", func() {
 				g.Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
 				g.Expect(c.Status.Phase).To(Equal(kanaryv1alpha1.PhaseRolledBack))
 				g.Expect(c.Annotations).NotTo(HaveKey(kanaryv1alpha1.AnnotationAbort))
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("creates canary Deployment and Services when canary starts progressing", func() {
+			key := types.NamespacedName{Name: canaryName, Namespace: testNamespace}
+
+			Eventually(func(g Gomega) {
+				c := &kanaryv1alpha1.Canary{}
+				g.Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
+				g.Expect(c.Status.StableRevision).NotTo(BeEmpty())
+			}, timeout, interval).Should(Succeed())
+
+			patchDeploymentRevision(deployName, "2")
+			touchCanary(key)
+
+			// Canary Deployment <name>-canary must be created.
+			Eventually(func(g Gomega) {
+				dep := &appsv1.Deployment{}
+				g.Expect(k8sClient.Get(ctx,
+					types.NamespacedName{Name: deployName + "-canary", Namespace: testNamespace},
+					dep)).To(Succeed())
+				g.Expect(dep.Labels["kanary.io/managed"]).To(Equal("true"))
+			}, timeout, interval).Should(Succeed())
+
+			// Stable Service <name> must exist.
+			Eventually(func(g Gomega) {
+				svc := &corev1.Service{}
+				g.Expect(k8sClient.Get(ctx,
+					types.NamespacedName{Name: deployName, Namespace: testNamespace},
+					svc)).To(Succeed())
+			}, timeout, interval).Should(Succeed())
+
+			// Canary Service <name>-canary must exist.
+			Eventually(func(g Gomega) {
+				svc := &corev1.Service{}
+				g.Expect(k8sClient.Get(ctx,
+					types.NamespacedName{Name: deployName + "-canary", Namespace: testNamespace},
+					svc)).To(Succeed())
+				g.Expect(svc.Spec.Selector["kanary.io/revision"]).To(Equal("canary"))
+			}, timeout, interval).Should(Succeed())
+		})
+
+		It("sets CanaryRevision in status when progressing", func() {
+			key := types.NamespacedName{Name: canaryName, Namespace: testNamespace}
+
+			Eventually(func(g Gomega) {
+				c := &kanaryv1alpha1.Canary{}
+				g.Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
+				g.Expect(c.Status.StableRevision).NotTo(BeEmpty())
+			}, timeout, interval).Should(Succeed())
+
+			patchDeploymentRevision(deployName, "2")
+			touchCanary(key)
+
+			Eventually(func(g Gomega) {
+				c := &kanaryv1alpha1.Canary{}
+				g.Expect(k8sClient.Get(ctx, key, c)).To(Succeed())
+				g.Expect(c.Status.CanaryRevision).To(Equal("2"))
 			}, timeout, interval).Should(Succeed())
 		})
 

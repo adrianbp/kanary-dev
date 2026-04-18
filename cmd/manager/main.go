@@ -34,6 +34,7 @@ import (
 	"github.com/adrianbp/kanary-dev/internal/traffic"
 	"github.com/adrianbp/kanary-dev/internal/traffic/nginx"
 	"github.com/adrianbp/kanary-dev/internal/traffic/openshift"
+	"github.com/adrianbp/kanary-dev/internal/workload"
 )
 
 var (
@@ -97,10 +98,11 @@ func main() {
 	trafficFactory.Register(kanaryv1alpha1.TrafficProviderOpenShiftRoute, openshift.New(mgr.GetClient()))
 
 	if err = (&controller.CanaryReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		Recorder:       mgr.GetEventRecorderFor("kanary-controller"),
-		TrafficFactory: trafficFactory,
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		Recorder:           mgr.GetEventRecorderFor("kanary-controller"),
+		TrafficFactory:     trafficFactory,
+		WorkloadReconciler: workload.New(mgr.GetClient(), mgr.GetScheme()),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Canary")
 		os.Exit(1)

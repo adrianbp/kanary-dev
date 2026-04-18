@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -14,16 +15,22 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
+	"golang.org/x/time/rate"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlcontroller "sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kanaryv1alpha1 "github.com/adrianbp/kanary-dev/api/v1alpha1"
 	"github.com/adrianbp/kanary-dev/internal/controller"
 	"github.com/adrianbp/kanary-dev/internal/traffic"
 	"github.com/adrianbp/kanary-dev/internal/traffic/nginx"
+	"github.com/adrianbp/kanary-dev/internal/workload"
 )
 
 var (
@@ -64,17 +71,29 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: sc})
 	Expect(err).NotTo(HaveOccurred())
 
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{Scheme: sc})
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme:                 sc,
+		Metrics:                metricsserver.Options{BindAddress: "0"},
+		HealthProbeBindAddress: "0",
+	})
 	Expect(err).NotTo(HaveOccurred())
+
+	// Slow rate limiter: cap at 5 reconciles/sec so envtest doesn't peg the CPU.
+	slowRL := workqueue.NewTypedMaxOfRateLimiter(
+		workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](100*time.Millisecond, 10*time.Second),
+		&workqueue.TypedBucketRateLimiter[reconcile.Request]{Limiter: slowBucket()},
+	)
 
 	trafficFactory := traffic.NewFactory()
 	trafficFactory.Register(kanaryv1alpha1.TrafficProviderNginx, nginx.New(mgr.GetClient()))
 
 	rec := &controller.CanaryReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		Recorder:       record.NewFakeRecorder(100),
-		TrafficFactory: trafficFactory,
+		Client:             mgr.GetClient(),
+		Scheme:             mgr.GetScheme(),
+		Recorder:           record.NewFakeRecorder(100),
+		TrafficFactory:     trafficFactory,
+		WorkloadReconciler: workload.New(mgr.GetClient(), mgr.GetScheme()),
+		ControllerOptions:  ctrlcontroller.Options{RateLimiter: slowRL},
 	}
 	Expect(rec.SetupWithManager(mgr)).To(Succeed())
 
@@ -139,3 +158,7 @@ func newCanary(name, targetName string, steps []kanaryv1alpha1.Step) *kanaryv1al
 		},
 	}
 }
+
+// slowBucket returns a token-bucket limiter capped at 5 ops/sec, burst 10.
+// Used to throttle the test controller so envtest doesn't saturate the CPU.
+func slowBucket() *rate.Limiter { return rate.NewLimiter(rate.Limit(5), 10) }

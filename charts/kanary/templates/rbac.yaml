@@ -1,0 +1,130 @@
+{{- $sa := include "kanary.serviceAccountName" . -}}
+{{- $ns := .Release.Namespace -}}
+{{- $mode := .Values.scope.mode -}}
+
+{{- $rules := list
+  (dict
+    "apiGroups" (list "")
+    "resources" (list "events")
+    "verbs" (list "create" "patch"))
+  (dict
+    "apiGroups" (list "")
+    "resources" (list "services")
+    "verbs" (list "create" "delete" "get" "list" "patch" "update" "watch"))
+  (dict
+    "apiGroups" (list "apps")
+    "resources" (list "deployments")
+    "verbs" (list "create" "get" "list" "patch" "update" "watch"))
+  (dict
+    "apiGroups" (list "kanary.io")
+    "resources" (list "canaries")
+    "verbs" (list "create" "delete" "get" "list" "patch" "update" "watch"))
+  (dict
+    "apiGroups" (list "kanary.io")
+    "resources" (list "canaries/finalizers")
+    "verbs" (list "update"))
+  (dict
+    "apiGroups" (list "kanary.io")
+    "resources" (list "canaries/status")
+    "verbs" (list "get" "patch" "update"))
+  (dict
+    "apiGroups" (list "networking.k8s.io")
+    "resources" (list "ingresses")
+    "verbs" (list "create" "delete" "get" "list" "patch" "update" "watch"))
+-}}
+
+{{- if eq $mode "cluster" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kanary.fullname" . }}
+  labels:
+    {{- include "kanary.labels" . | nindent 4 }}
+rules:
+  {{- range $rules }}
+  - apiGroups: {{ .apiGroups | toJson }}
+    resources: {{ .resources | toJson }}
+    verbs: {{ .verbs | toJson }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kanary.fullname" . }}
+  labels:
+    {{- include "kanary.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kanary.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ $ns }}
+
+{{- else if eq $mode "namespaced" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kanary.fullname" . }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kanary.labels" . | nindent 4 }}
+rules:
+  {{- range $rules }}
+  - apiGroups: {{ .apiGroups | toJson }}
+    resources: {{ .resources | toJson }}
+    verbs: {{ .verbs | toJson }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kanary.fullname" . }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "kanary.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "kanary.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ $ns }}
+
+{{- else if eq $mode "multi-namespace" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kanary.fullname" . }}
+  labels:
+    {{- include "kanary.labels" . | nindent 4 }}
+rules:
+  {{- range $rules }}
+  - apiGroups: {{ .apiGroups | toJson }}
+    resources: {{ .resources | toJson }}
+    verbs: {{ .verbs | toJson }}
+  {{- end }}
+  {{- range .Values.scope.namespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "kanary.fullname" $ }}
+  namespace: {{ . }}
+  labels:
+    {{- include "kanary.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kanary.fullname" $ }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ $ns }}
+  {{- end }}
+{{- end }}

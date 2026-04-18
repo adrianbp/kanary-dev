@@ -62,6 +62,26 @@ jobs:
       - name: Build manager
         run: make build
 
+  helm:
+    name: Helm chart lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "3.17.0"
+
+      - name: Helm lint (default values)
+        run: helm lint charts/kanary
+
+      - name: Helm lint (cluster scope)
+        run: helm lint charts/kanary --set scope.mode=cluster
+
+      - name: Helm lint (multi-namespace scope)
+        run: helm lint charts/kanary --set scope.mode=multi-namespace --set 'scope.namespaces[0]=ns1' --set 'scope.namespaces[1]=ns2'
+
   container:
     name: Docker image build
     runs-on: ubuntu-latest

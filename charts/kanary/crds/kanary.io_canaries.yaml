@@ -1,0 +1,356 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.3
+  name: canaries.kanary.io
+spec:
+  group: kanary.io
+  names:
+    categories:
+    - kanary
+    kind: Canary
+    listKind: CanaryList
+    plural: canaries
+    shortNames:
+    - cn
+    singular: canary
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.currentWeight
+      name: Weight
+      type: integer
+    - jsonPath: .status.currentStepIndex
+      name: Step
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Canary is a declarative canary rollout for a Deployment target.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: CanarySpec is the desired state of a Canary.
+            properties:
+              analysis:
+                description: Analysis is opt-in. When disabled the reconciler never
+                  queries metrics.
+                properties:
+                  enabled:
+                    default: false
+                    type: boolean
+                  metrics:
+                    items:
+                      description: MetricCheck describes a single metric the analyzer
+                        queries.
+                      properties:
+                        name:
+                          minLength: 1
+                          type: string
+                        query:
+                          minLength: 1
+                          type: string
+                        thresholdRange:
+                          description: ThresholdRange is an acceptance window. At
+                            least one of Min/Max must be set.
+                          properties:
+                            max:
+                              type: number
+                            min:
+                              type: number
+                          type: object
+                      required:
+                      - name
+                      - query
+                      - thresholdRange
+                      type: object
+                    minItems: 1
+                    type: array
+                  provider:
+                    description: MetricProviderConfig carries the connection details
+                      for a metric backend.
+                    properties:
+                      address:
+                        description: Address is the HTTP endpoint of the metric provider
+                          (ignored for managed SaaS).
+                        type: string
+                      secretRef:
+                        description: SecretRef points to a Secret holding credentials.
+                        properties:
+                          name:
+                            minLength: 1
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      type:
+                        description: MetricProviderType selects the metric backend.
+                        enum:
+                        - prometheus
+                        - datadog
+                        - dynatrace
+                        type: string
+                    required:
+                    - type
+                    type: object
+                type: object
+              service:
+                description: ServiceSpec describes how to expose the target internally.
+                properties:
+                  port:
+                    format: int32
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                  targetPort:
+                    description: TargetPort can be a port name or number; we accept
+                      string for simplicity.
+                    type: string
+                required:
+                - port
+                type: object
+              strategy:
+                description: Strategy defines how the rollout progresses through its
+                  steps.
+                properties:
+                  maxFailedChecks:
+                    default: 2
+                    description: |-
+                      MaxFailedChecks is the number of consecutive analysis failures
+                      before the reconciler aborts and rolls back (Progressive mode).
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  mode:
+                    default: Manual
+                    description: StrategyMode selects between manual and automated
+                      rollout.
+                    enum:
+                    - Manual
+                    - Progressive
+                    type: string
+                  stepInterval:
+                    default: 2m
+                    description: StepInterval is the minimum time spent on each step
+                      (Progressive mode).
+                    type: string
+                  steps:
+                    items:
+                      description: Step is one point in the weighted rollout schedule.
+                      properties:
+                        weight:
+                          description: Weight is the percentage of traffic sent to
+                            the canary at this step.
+                          format: int32
+                          maximum: 100
+                          minimum: 0
+                          type: integer
+                      required:
+                      - weight
+                      type: object
+                    minItems: 1
+                    type: array
+                required:
+                - steps
+                type: object
+              targetRef:
+                description: TargetRef points at the Deployment whose rollouts this
+                  Canary manages.
+                properties:
+                  apiVersion:
+                    default: apps/v1
+                    type: string
+                  kind:
+                    default: Deployment
+                    enum:
+                    - Deployment
+                    type: string
+                  name:
+                    minLength: 1
+                    type: string
+                required:
+                - kind
+                - name
+                type: object
+              trafficProvider:
+                description: TrafficProvider configures how traffic is split between
+                  stable and canary.
+                properties:
+                  ingressRef:
+                    description: IngressRef is required when Type=nginx.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  routeRef:
+                    description: RouteRef is required when Type=openshift-route.
+                    properties:
+                      name:
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    type: object
+                  type:
+                    description: TrafficProviderType selects the router implementation.
+                    enum:
+                    - nginx
+                    - openshift-route
+                    type: string
+                required:
+                - type
+                type: object
+            required:
+            - service
+            - strategy
+            - targetRef
+            - trafficProvider
+            type: object
+          status:
+            description: CanaryStatus is the observed state of a Canary.
+            properties:
+              canaryRevision:
+                type: string
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              currentStepIndex:
+                format: int32
+                type: integer
+              currentWeight:
+                format: int32
+                type: integer
+              failedChecks:
+                format: int32
+                type: integer
+              lastAnalysis:
+                description: AnalysisReport is the last metrics analysis snapshot.
+                properties:
+                  results:
+                    items:
+                      description: AnalysisResult captures the outcome of a single
+                        metric check.
+                      properties:
+                        metric:
+                          type: string
+                        passed:
+                          type: boolean
+                        value:
+                          type: number
+                      required:
+                      - metric
+                      - passed
+                      - value
+                      type: object
+                    type: array
+                  timestamp:
+                    format: date-time
+                    type: string
+                required:
+                - timestamp
+                type: object
+              observedGeneration:
+                description: ObservedGeneration is the .metadata.generation the reconciler
+                  has processed.
+                format: int64
+                type: integer
+              phase:
+                description: Phase represents the top-level lifecycle state of a Canary.
+                enum:
+                - Idle
+                - Progressing
+                - AwaitingPromotion
+                - Analyzing
+                - Promoting
+                - Succeeded
+                - Failed
+                - RolledBack
+                type: string
+              stableRevision:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

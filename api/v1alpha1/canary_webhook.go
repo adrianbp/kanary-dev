@@ -21,7 +21,7 @@ import (
 
 // CanaryWebhook implements both the Defaulter and Validator interfaces.
 type CanaryWebhook struct {
-	Client client.Client
+	APIReader client.Reader
 }
 
 var _ webhook.CustomDefaulter = &CanaryWebhook{}
@@ -162,13 +162,13 @@ func validateAnalysis(c *Canary) field.ErrorList {
 // namespace. A not-found error is reported as a field validation failure so
 // the user gets a clear message at admission time.
 func (w *CanaryWebhook) validateTargetRef(ctx context.Context, c *Canary) *field.Error {
-	if w.Client == nil {
+	if w.APIReader == nil {
 		return nil
 	}
 	fp := field.NewPath("spec", "targetRef", "name")
 	deploy := &appsv1.Deployment{}
 	key := types.NamespacedName{Name: c.Spec.TargetRef.Name, Namespace: c.Namespace}
-	if err := w.Client.Get(ctx, key, deploy); err != nil {
+	if err := w.APIReader.Get(ctx, key, deploy); err != nil {
 		if apierrors.IsNotFound(err) {
 			return field.Invalid(fp, c.Spec.TargetRef.Name,
 				fmt.Sprintf("Deployment %q not found in namespace %q", c.Spec.TargetRef.Name, c.Namespace))

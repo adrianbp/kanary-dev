@@ -206,7 +206,7 @@ func TestValidate_TargetRefExists(t *testing.T) {
 	sc := newScheme(t)
 	deploy := existingDeployment("my-app", "prod")
 	c := fake.NewClientBuilder().WithScheme(sc).WithObjects(deploy).Build()
-	wh := &v1alpha1.CanaryWebhook{Client: c}
+	wh := &v1alpha1.CanaryWebhook{APIReader: c}
 
 	canary := minimalCanary("x", "prod", "my-app", []v1alpha1.Step{{Weight: 100}})
 	_, err := wh.ValidateCreate(context.Background(), canary)
@@ -217,7 +217,7 @@ func TestValidate_TargetRefNotFound(t *testing.T) {
 	t.Parallel()
 	sc := newScheme(t)
 	c := fake.NewClientBuilder().WithScheme(sc).Build() // no deployment
-	wh := &v1alpha1.CanaryWebhook{Client: c}
+	wh := &v1alpha1.CanaryWebhook{APIReader: c}
 
 	canary := minimalCanary("x", "prod", "missing-app", []v1alpha1.Step{{Weight: 100}})
 	_, err := wh.ValidateCreate(context.Background(), canary)
@@ -227,7 +227,7 @@ func TestValidate_TargetRefNotFound(t *testing.T) {
 
 func TestValidate_NilClient_SkipsExistenceCheck(t *testing.T) {
 	t.Parallel()
-	wh := &v1alpha1.CanaryWebhook{Client: nil}
+	wh := &v1alpha1.CanaryWebhook{APIReader: nil}
 	canary := minimalCanary("x", "prod", "any-app", []v1alpha1.Step{{Weight: 100}})
 	_, err := wh.ValidateCreate(context.Background(), canary)
 	require.NoError(t, err)

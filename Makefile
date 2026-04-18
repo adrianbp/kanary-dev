@@ -44,7 +44,8 @@ manifests: controller-gen ## Generate CRDs and RBAC manifests (config/)
 	$(CONTROLLER_GEN) rbac:roleName=kanary-manager-role \
 	  crd webhook paths="./..." \
 	  output:crd:artifacts:config=config/crd/bases \
-	  output:rbac:artifacts:config=config/rbac
+	  output:rbac:artifacts:config=config/rbac \
+	  output:webhook:artifacts:config=config/webhook
 
 .PHONY: generate
 generate: controller-gen ## Regenerate zz_generated.deepcopy.go

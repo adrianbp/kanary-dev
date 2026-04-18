@@ -105,7 +105,7 @@ func main() {
 	}
 
 	if err = (&kanaryv1alpha1.CanaryWebhook{
-		Client: mgr.GetClient(),
+		APIReader: mgr.GetAPIReader(),
 	}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to register webhook", "webhook", "Canary")
 		os.Exit(1)

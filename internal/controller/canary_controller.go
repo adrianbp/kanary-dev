@@ -36,6 +36,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
@@ -43,6 +44,7 @@ import (
 	"github.com/adrianbp/kanary-dev/internal/domain"
 	kerr "github.com/adrianbp/kanary-dev/internal/errors"
 	"github.com/adrianbp/kanary-dev/internal/traffic"
+	"github.com/adrianbp/kanary-dev/internal/workload"
 )
 
 // Default poll intervals; tuned to keep CPU low on idle canaries.
@@ -67,9 +69,13 @@ const (
 // CanaryReconciler reconciles Canary CRs.
 type CanaryReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	Recorder       record.EventRecorder
-	TrafficFactory *traffic.Factory
+	Scheme             *runtime.Scheme
+	Recorder           record.EventRecorder
+	TrafficFactory     *traffic.Factory
+	WorkloadReconciler *workload.Reconciler
+	// ControllerOptions is passed to WithOptions; useful for injecting a slow
+	// rate limiter in tests so envtest doesn't saturate the CPU.
+	ControllerOptions controller.Options
 }
 
 // +kubebuilder:rbac:groups=kanary.io,resources=canaries,verbs=get;list;watch;create;update;patch;delete
@@ -142,18 +148,37 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if err := router.Reset(ctx, canary); err != nil {
 			return requeueOnRetryable(err, "reset traffic")
 		}
+		if r.WorkloadReconciler != nil {
+			if err := r.WorkloadReconciler.CleanupCanary(ctx, canary); err != nil {
+				return requeueOnRetryable(err, "cleanup canary workload")
+			}
+		}
 		r.Recorder.Event(canary, corev1.EventTypeWarning, ReasonRolledBack, reason)
 
 	case domain.DecisionPromote:
-		// Canary becomes stable: route 100% to canary workload, then cleanup.
+		// Canary becomes stable: reset traffic then clean up canary workload.
 		if err := router.Reset(ctx, canary); err != nil {
 			return requeueOnRetryable(err, "reset after promote")
+		}
+		if r.WorkloadReconciler != nil {
+			if err := r.WorkloadReconciler.CleanupCanary(ctx, canary); err != nil {
+				return requeueOnRetryable(err, "cleanup canary workload after promote")
+			}
 		}
 		r.Recorder.Event(canary, corev1.EventTypeNormal, ReasonSucceeded, reason)
 
 	case domain.DecisionAdvance, domain.DecisionHold:
 		if err := router.Reconcile(ctx, canary, weight); err != nil {
 			return requeueOnRetryable(err, "reconcile traffic")
+		}
+		if r.WorkloadReconciler != nil &&
+			(nextPhase == kanaryv1alpha1.PhaseAwaitingPromotion || nextPhase == kanaryv1alpha1.PhaseProgressing) {
+			if err := r.WorkloadReconciler.EnsureCanaryDeployment(ctx, canary, target); err != nil {
+				return requeueOnRetryable(err, "ensure canary deployment")
+			}
+			if err := r.WorkloadReconciler.EnsureServices(ctx, canary, target); err != nil {
+				return requeueOnRetryable(err, "ensure services")
+			}
 		}
 		if decision == domain.DecisionAdvance {
 			r.Recorder.Eventf(canary, corev1.EventTypeNormal, ReasonStepAdvanced,
@@ -207,12 +232,14 @@ func (r *CanaryReconciler) decide(
 			"seeding stable revision"
 	}
 	if stable == observed {
-		if canary.Status.Phase == kanaryv1alpha1.PhaseSucceeded {
-			return domain.DecisionHold, kanaryv1alpha1.PhaseSucceeded, 0,
-				"no new revision"
+		switch canary.Status.Phase {
+		case kanaryv1alpha1.PhaseSucceeded:
+			return domain.DecisionHold, kanaryv1alpha1.PhaseSucceeded, 0, "no new revision"
+		case kanaryv1alpha1.PhaseRolledBack:
+			return domain.DecisionHold, kanaryv1alpha1.PhaseRolledBack, 0, "no new revision after rollback"
+		default:
+			return domain.DecisionHold, kanaryv1alpha1.PhaseIdle, 0, "no new revision"
 		}
-		return domain.DecisionHold, kanaryv1alpha1.PhaseIdle, 0,
-			"no new revision"
 	}
 
 	// Determine current step.
@@ -265,7 +292,15 @@ func (r *CanaryReconciler) updateStatus(
 	switch decision {
 	case domain.DecisionAdvance:
 		canary.Status.CurrentStepIndex++
+		canary.Status.CanaryRevision = deploymentRevision(target)
+	case domain.DecisionHold:
+		if phase == kanaryv1alpha1.PhaseAwaitingPromotion || phase == kanaryv1alpha1.PhaseProgressing {
+			canary.Status.CanaryRevision = deploymentRevision(target)
+		}
 	case domain.DecisionRollback:
+		// Accept the current revision as the new stable baseline so subsequent
+		// reconciles don't re-trigger a canary for the same revision diff.
+		canary.Status.StableRevision = deploymentRevision(target)
 		canary.Status.CurrentStepIndex = 0
 		canary.Status.CanaryRevision = ""
 	case domain.DecisionPromote:
@@ -295,6 +330,7 @@ func (r *CanaryReconciler) updateStatus(
 // watches tightly so memory usage stays low (SPEC.md §8).
 func (r *CanaryReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		WithOptions(r.ControllerOptions).
 		For(&kanaryv1alpha1.Canary{}, builder.WithPredicates(predicate.Or(
 			predicate.GenerationChangedPredicate{},
 			predicate.AnnotationChangedPredicate{},

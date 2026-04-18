@@ -19,11 +19,13 @@ LOCALBIN      := $(shell pwd)/bin
 CONTROLLER_GEN := $(LOCALBIN)/controller-gen
 GOLANGCI_LINT := $(LOCALBIN)/golangci-lint
 ENVTEST       := $(LOCALBIN)/setup-envtest
+GOSEC         := $(LOCALBIN)/gosec
 KUBECTL       ?= kubectl
 
 CONTROLLER_TOOLS_VERSION ?= v0.17.3
 GOLANGCI_LINT_VERSION    ?= v1.64.8
 ENVTEST_K8S_VERSION      ?= 1.31.0
+GOSEC_VERSION            ?= v2.22.5
 
 # -- Build metadata ----------------------------------------------------------
 LDFLAGS := -s -w \
@@ -65,6 +67,12 @@ vet: ## go vet
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint
 	$(GOLANGCI_LINT) run ./...
+
+.PHONY: gosec
+gosec: $(LOCALBIN) ## Run gosec static security scanner
+	test -s $(GOSEC) && $(GOSEC) -version | grep -q $(GOSEC_VERSION) || \
+	  GOBIN=$(LOCALBIN) go install github.com/securego/gosec/v2/cmd/gosec@$(GOSEC_VERSION)
+	$(GOSEC) ./...
 
 .PHONY: build
 build: fmt vet ## Build the manager binary

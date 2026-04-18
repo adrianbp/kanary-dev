@@ -29,7 +29,7 @@ jobs:
           key: ${{ runner.os }}-tools-${{ hashFiles('Makefile') }}
 
       - name: Install tooling
-        run: make controller-gen golangci-lint envtest
+        run: make controller-gen golangci-lint envtest gosec
 
       - name: Generate + manifests
         run: |
@@ -47,9 +47,7 @@ jobs:
         run: make lint
 
       - name: Security scan (gosec)
-        uses: securego/gosec@v2.22.5
-        with:
-          args: ./...
+        run: make gosec
 
       - name: Test (race + coverage)
         run: make test

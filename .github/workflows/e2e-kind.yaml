@@ -13,7 +13,7 @@ env:
 
 jobs:
   e2e:
-    name: E2E — kind ${{ env.K8S_VERSION }}
+    name: E2E (kind)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 

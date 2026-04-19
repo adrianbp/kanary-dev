@@ -41,6 +41,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	kanaryv1alpha1 "github.com/adrianbp/kanary-dev/api/v1alpha1"
+	"github.com/adrianbp/kanary-dev/internal/analysis"
 	"github.com/adrianbp/kanary-dev/internal/domain"
 	kerr "github.com/adrianbp/kanary-dev/internal/errors"
 	"github.com/adrianbp/kanary-dev/internal/traffic"
@@ -64,6 +65,8 @@ const (
 	ReasonSucceeded        = "CanarySucceeded"
 	ReasonRolledBack       = "RolledBack"
 	ReasonReconcileError   = "ReconcileError"
+	ReasonAnalysisPassed   = "AnalysisPassed"
+	ReasonAnalysisFailed   = "AnalysisFailed"
 )
 
 // CanaryReconciler reconciles Canary CRs.
@@ -73,6 +76,8 @@ type CanaryReconciler struct {
 	Recorder           record.EventRecorder
 	TrafficFactory     *traffic.Factory
 	WorkloadReconciler *workload.Reconciler
+	// AnalysisEngine runs metric checks for Progressive mode. Nil disables analysis.
+	AnalysisEngine *analysis.Engine
 	// ControllerOptions is passed to WithOptions; useful for injecting a slow
 	// rate limiter in tests so envtest doesn't saturate the CPU.
 	ControllerOptions controller.Options
@@ -126,9 +131,24 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, fmt.Errorf("get target deployment: %w", err)
 	}
 
+	// --- analysis (Progressive mode) ----------------------------------------
+
+	// Run metric analysis before decide() so the result can influence the decision.
+	var analysisResult *analysis.Result
+	if canary.Spec.Strategy.Mode == kanaryv1alpha1.StrategyProgressive &&
+		canary.Spec.Analysis.Enabled &&
+		r.AnalysisEngine != nil &&
+		canary.Status.Phase == kanaryv1alpha1.PhaseAnalyzing {
+		res, err := r.AnalysisEngine.Evaluate(ctx, canary)
+		if err != nil {
+			return requeueOnRetryable(err, "run analysis")
+		}
+		analysisResult = &res
+	}
+
 	// --- state machine ------------------------------------------------------
 
-	decision, nextPhase, weight, reason := r.decide(canary, target)
+	decision, nextPhase, weight, reason := r.decide(canary, target, analysisResult)
 	logger.V(1).Info("decided",
 		"phase", nextPhase,
 		"decision", decision.String(),
@@ -188,6 +208,17 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			r.Recorder.Eventf(canary, corev1.EventTypeNormal, ReasonStepAdvanced,
 				"advanced to step %d (%d%%)", canary.Status.CurrentStepIndex+1, weight)
 		}
+		if analysisResult != nil {
+			if analysisResult.Passed {
+				r.Recorder.Eventf(canary, corev1.EventTypeNormal, ReasonAnalysisPassed,
+					"analysis passed (%d checks)", len(analysisResult.Report.Results))
+			} else {
+				r.Recorder.Eventf(canary, corev1.EventTypeWarning, ReasonAnalysisFailed,
+					"analysis failed: %d/%d checks failed (consecutive=%d)",
+					analysisResult.FailedChecks, len(analysisResult.Report.Results),
+					analysisResult.FailedChecks)
+			}
+		}
 	}
 
 	if promoteRequested || abortRequested {
@@ -201,7 +232,7 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// --- persist status -----------------------------------------------------
 
 	orig := canary.DeepCopy()
-	r.updateStatus(canary, decision, nextPhase, weight, target)
+	r.updateStatus(canary, decision, nextPhase, weight, target, analysisResult)
 	if err := r.Status().Patch(ctx, canary, client.MergeFrom(orig)); err != nil {
 		return ctrl.Result{}, fmt.Errorf("patch status: %w", err)
 	}
@@ -210,10 +241,12 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 }
 
 // decide turns the current observed state into one of four StepDecisions.
-// Keeping this pure (no I/O) makes it easy to unit-test.
+// analysisResult is non-nil only when Progressive mode ran analysis this pass.
+// The function itself is free of I/O so it remains easy to unit-test.
 func (r *CanaryReconciler) decide(
 	canary *kanaryv1alpha1.Canary,
 	target *appsv1.Deployment,
+	analysisResult *analysis.Result,
 ) (decision domain.StepDecision, nextPhase kanaryv1alpha1.Phase, weight int32, reason string) {
 	// Abort annotation wins over everything.
 	if canary.Annotations[kanaryv1alpha1.AnnotationAbort] == annotationTrue {
@@ -259,9 +292,49 @@ func (r *CanaryReconciler) decide(
 
 	switch canary.Spec.Strategy.Mode {
 	case kanaryv1alpha1.StrategyProgressive:
-		// TODO(M3): analyze metrics and advance automatically.
-		// Until then, treat Progressive like Manual to keep behavior safe.
-		fallthrough
+		// Abort via annotation always wins.
+		// Progressive flow per step:
+		//   1. Enter PhaseAnalyzing (hold weight, wait for analysis interval).
+		//   2. On next pass, run analysis and either advance or rollback.
+		if promote {
+			// Manual override: skip analysis and advance/promote immediately.
+			if stepIdx+1 >= len(steps) {
+				return domain.DecisionPromote, kanaryv1alpha1.PhaseSucceeded,
+					steps[len(steps)-1].Weight, "last step promoted (manual override)"
+			}
+			return domain.DecisionAdvance, kanaryv1alpha1.PhaseProgressing,
+				steps[stepIdx+1].Weight, "promote annotation observed"
+		}
+
+		if canary.Status.Phase != kanaryv1alpha1.PhaseAnalyzing {
+			// First pass at this step: enter analysis window.
+			return domain.DecisionHold, kanaryv1alpha1.PhaseAnalyzing,
+				steps[stepIdx].Weight, "entering analysis window"
+		}
+
+		// Second pass: analysisResult is populated.
+		if analysisResult == nil {
+			// Analysis not yet run (e.g. engine not wired); stay in Analyzing.
+			return domain.DecisionHold, kanaryv1alpha1.PhaseAnalyzing,
+				steps[stepIdx].Weight, "waiting for analysis"
+		}
+		if analysis.ShouldRollback(canary) {
+			return domain.DecisionRollback, kanaryv1alpha1.PhaseRolledBack, 0,
+				fmt.Sprintf("analysis failed %d consecutive times", canary.Status.FailedChecks)
+		}
+		if !analysisResult.Passed {
+			// Failure but not yet at the rollback threshold: stay and re-analyze.
+			return domain.DecisionHold, kanaryv1alpha1.PhaseAnalyzing,
+				steps[stepIdx].Weight, "analysis failed, re-analyzing"
+		}
+		// Analysis passed: advance to next step or promote.
+		if stepIdx+1 >= len(steps) {
+			return domain.DecisionPromote, kanaryv1alpha1.PhaseSucceeded,
+				steps[len(steps)-1].Weight, "all steps passed analysis"
+		}
+		return domain.DecisionAdvance, kanaryv1alpha1.PhaseProgressing,
+			steps[stepIdx+1].Weight, "analysis passed"
+
 	case kanaryv1alpha1.StrategyManual, "":
 		if promote {
 			if stepIdx+1 >= len(steps) {
@@ -288,6 +361,7 @@ func (r *CanaryReconciler) updateStatus(
 	phase kanaryv1alpha1.Phase,
 	weight int32,
 	target *appsv1.Deployment,
+	analysisResult *analysis.Result,
 ) {
 	canary.Status.ObservedGeneration = canary.Generation
 	canary.Status.Phase = phase
@@ -314,6 +388,12 @@ func (r *CanaryReconciler) updateStatus(
 	}
 	if canary.Status.StableRevision == "" {
 		canary.Status.StableRevision = deploymentRevision(target)
+	}
+
+	if analysisResult != nil {
+		canary.Status.FailedChecks = analysisResult.FailedChecks
+		report := analysisResult.Report
+		canary.Status.LastAnalysis = &report
 	}
 
 	readyCond := metav1.Condition{

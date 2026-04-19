@@ -119,7 +119,7 @@ func TestDecide(t *testing.T) {
 				}},
 			}
 
-			decision, phase, weight, reason := r.decide(canary, target)
+			decision, phase, weight, reason := r.decide(canary, target, nil)
 			require.Equal(t, tc.wantDecision, decision, "decision for %s", tc.name)
 			require.Equal(t, tc.wantPhase, phase, "phase for %s", tc.name)
 			require.Equal(t, tc.wantWeight, weight, "weight for %s", tc.name)

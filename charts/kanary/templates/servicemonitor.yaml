@@ -18,5 +18,5 @@ spec:
       interval: {{ .Values.observability.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.observability.serviceMonitor.scrapeTimeout }}
       path: /metrics
-      honorLabels: false
+      honorLabels: true
 {{- end }}

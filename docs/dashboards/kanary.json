@@ -115,8 +115,8 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Promotions (24 h)",
-      "description": "Total successful canary promotions in the last 24 hours.",
+      "title": "Promotions (total)",
+      "description": "Total successful canary promotions since last operator restart.",
       "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "options": {
@@ -133,7 +133,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(kanary_canary_promotions_total{namespace=~\"$namespace\"}[24h])) or vector(0)",
+          "expr": "sum(kanary_canary_promotions_total{namespace=~\"$namespace\"}) or vector(0)",
           "legendFormat": "promotions",
           "refId": "A"
         }
@@ -143,8 +143,8 @@
     {
       "id": 3,
       "type": "stat",
-      "title": "Rollbacks (24 h)",
-      "description": "Total canary rollbacks in the last 24 hours.",
+      "title": "Rollbacks (total)",
+      "description": "Total canary rollbacks since last operator restart.",
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "options": {
@@ -169,7 +169,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(kanary_canary_rollbacks_total{namespace=~\"$namespace\"}[24h])) or vector(0)",
+          "expr": "sum(kanary_canary_rollbacks_total{namespace=~\"$namespace\"}) or vector(0)",
           "legendFormat": "rollbacks",
           "refId": "A"
         }
@@ -457,12 +457,12 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(kanary_canary_promotions_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(kanary_canary_promotions_total{namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "promotions",
           "refId": "A"
         },
         {
-          "expr": "sum(rate(kanary_canary_rollbacks_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(increase(kanary_canary_rollbacks_total{namespace=~\"$namespace\"}[5m]))",
           "legendFormat": "rollbacks",
           "refId": "B"
         }

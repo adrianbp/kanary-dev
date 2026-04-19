@@ -77,18 +77,18 @@
 
 ## Épico 6 — Metric Providers & Analysis (M3)
 
-- [ ] **#060** Interface `MetricProvider` + factory. _(area/metrics, priority/p0)_
-- [ ] **#061** Implementar `PrometheusProvider` (PromQL + HTTP API). _(area/metrics, priority/p0)_
+- [x] **#060** Interface `MetricProvider` + factory. _(area/metrics, priority/p0)_
+- [x] **#061** Implementar `PrometheusProvider` (PromQL + HTTP API). _(area/metrics, priority/p0)_
 - [ ] **#062** Implementar `DatadogProvider` (Metrics v2 API + auth via Secret). _(area/metrics)_
 - [ ] **#063** Implementar `DynatraceProvider` (Metrics v2 API + token). _(area/metrics)_
-- [ ] **#064** Engine de análise (janelas, thresholds min/max, consecutive fails). _(area/analysis, priority/p0)_
-- [ ] **#065** Modo Progressive no reconciler. _(area/controller, priority/p0)_
-- [ ] **#066** Rollback automático quando `maxFailedChecks` atingido. _(area/controller, priority/p0)_
+- [x] **#064** Engine de análise (janelas, thresholds min/max, consecutive fails). _(area/analysis, priority/p0)_
+- [x] **#065** Modo Progressive no reconciler. _(area/controller, priority/p0)_
+- [x] **#066** Rollback automático quando `maxFailedChecks` atingido. _(area/controller, priority/p0)_
 - [ ] **#067** Fuzz tests dos parsers de query. _(area/testing)_
 
 ## Épico 7 — Observabilidade (M3)
 
-- [ ] **#070** Registrar métricas Prometheus descritas no SPEC §9.2. _(area/metrics, priority/p0)_
+- [x] **#070** Registrar métricas Prometheus descritas no SPEC §9.2. _(area/metrics, priority/p0)_
 - [ ] **#071** `ServiceMonitor` no chart. _(area/chart)_
 - [ ] **#072** `PrometheusRule` com alertas §9.5. _(area/chart)_
 - [ ] **#073** Dashboard Grafana em `docs/dashboards/kanary.json`. _(area/docs)_

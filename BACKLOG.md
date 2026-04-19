@@ -70,7 +70,7 @@
 
 - [ ] **#050** Workflow `ci.yaml` (lint + test + race + coverage ≥80%). _(area/ci, priority/p0)_
 - [ ] **#051** Workflow `e2e-kind.yaml` (kind + Nginx + envtest). _(area/ci, priority/p0)_
-- [ ] **#052** Workflow `release.yaml` (multi-arch build, GHCR, chart publish, SBOM+cosign). _(area/ci)_
+- [x] **#052** Workflow `release.yaml` (multi-arch build, GHCR, chart publish, SBOM+cosign). _(area/ci)_
 - [ ] **#053** Composite action `canary-deploy` (v1 — manual). _(area/ci, priority/p0)_
 - [ ] **#054** Composite action `standard-deploy` com toggle `enable-canary`. _(area/ci, priority/p0)_
 - [ ] **#055** Docs de uso das actions em `docs/actions.md`. _(area/docs)_

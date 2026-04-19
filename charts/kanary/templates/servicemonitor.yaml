@@ -10,9 +10,13 @@ spec:
   selector:
     matchLabels:
       {{- include "kanary.selectorLabels" . | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
   endpoints:
     - port: metrics
       interval: {{ .Values.observability.serviceMonitor.interval }}
       scrapeTimeout: {{ .Values.observability.serviceMonitor.scrapeTimeout }}
       path: /metrics
+      honorLabels: false
 {{- end }}

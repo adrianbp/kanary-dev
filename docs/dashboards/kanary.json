@@ -715,8 +715,8 @@
     {
       "id": 10,
       "type": "timeseries",
-      "title": "Promotions & Rollbacks Rate",
-      "description": "Rate of canary promotions and rollbacks over time.",
+      "title": "Promotions & Rollbacks",
+      "description": "Cumulative promotions and rollbacks over time (step = 1 event).",
       "gridPos": {
         "x": 0,
         "y": 28,
@@ -738,10 +738,11 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops",
+          "unit": "short",
           "custom": {
             "lineWidth": 2,
-            "fillOpacity": 10
+            "fillOpacity": 10,
+            "steppedLine": true
           }
         },
         "overrides": [
@@ -779,12 +780,12 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(kanary_canary_promotions_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(kanary_canary_promotions_total{namespace=~\"$namespace\"})",
           "legendFormat": "promotions",
           "refId": "A"
         },
         {
-          "expr": "sum(increase(kanary_canary_rollbacks_total{namespace=~\"$namespace\"}[5m]))",
+          "expr": "sum(kanary_canary_rollbacks_total{namespace=~\"$namespace\"}) or vector(0)",
           "legendFormat": "rollbacks",
           "refId": "B"
         }

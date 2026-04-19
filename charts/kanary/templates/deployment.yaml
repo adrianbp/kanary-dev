@@ -38,6 +38,9 @@ spec:
             {{- if .Values.leaderElection.enabled }}
             - --leader-elect
             {{- end }}
+            {{- if not .Values.webhooks.enabled }}
+            - --webhooks-enabled=false
+            {{- end }}
             {{- $ns := include "kanary.watchNamespaces" . }}
             {{- if $ns }}
             - --watch-namespaces={{ $ns }}

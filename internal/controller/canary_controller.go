@@ -81,7 +81,7 @@ type CanaryReconciler struct {
 // +kubebuilder:rbac:groups=kanary.io,resources=canaries,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=kanary.io,resources=canaries/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kanary.io,resources=canaries/finalizers,verbs=update
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=ingresses,verbs=get;list;watch;create;update;patch;delete
@@ -168,8 +168,12 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		r.Recorder.Event(canary, corev1.EventTypeNormal, ReasonSucceeded, reason)
 
 	case domain.DecisionAdvance, domain.DecisionHold:
-		if err := router.Reconcile(ctx, canary, weight); err != nil {
-			return requeueOnRetryable(err, "reconcile traffic")
+		// Only reconcile traffic when there is an active canary; skip on idle/terminal phases
+		// to avoid errors when no canary Ingress exists yet.
+		if nextPhase == kanaryv1alpha1.PhaseProgressing || nextPhase == kanaryv1alpha1.PhaseAwaitingPromotion {
+			if err := router.Reconcile(ctx, canary, weight); err != nil {
+				return requeueOnRetryable(err, "reconcile traffic")
+			}
 		}
 		if r.WorkloadReconciler != nil &&
 			(nextPhase == kanaryv1alpha1.PhaseAwaitingPromotion || nextPhase == kanaryv1alpha1.PhaseProgressing) {

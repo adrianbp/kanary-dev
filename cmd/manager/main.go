@@ -52,12 +52,14 @@ func main() {
 		metricsAddr       string
 		probeAddr         string
 		enableLeader      bool
+		enableWebhooks    bool
 		watchNamespacesCS string
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "Healthz endpoint address.")
 	flag.BoolVar(&enableLeader, "leader-elect", false, "Enable leader election.")
+	flag.BoolVar(&enableWebhooks, "webhooks-enabled", true, "Register webhook server (requires TLS certs).")
 	flag.StringVar(&watchNamespacesCS, "watch-namespaces", "",
 		"Comma-separated list of namespaces to watch. Empty means cluster-wide.")
 
@@ -108,11 +110,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&kanaryv1alpha1.CanaryWebhook{
-		APIReader: mgr.GetAPIReader(),
-	}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to register webhook", "webhook", "Canary")
-		os.Exit(1)
+	if enableWebhooks {
+		if err = (&kanaryv1alpha1.CanaryWebhook{
+			APIReader: mgr.GetAPIReader(),
+		}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to register webhook", "webhook", "Canary")
+			os.Exit(1)
+		}
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

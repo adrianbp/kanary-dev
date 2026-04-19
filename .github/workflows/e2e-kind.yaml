@@ -1,0 +1,239 @@
+name: E2E (kind)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  K8S_VERSION: "1.34.1"
+
+jobs:
+  e2e:
+    name: E2E — kind ${{ env.K8S_VERSION }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+          cache: true
+
+      # -----------------------------------------------------------------------
+      # Tooling
+      # -----------------------------------------------------------------------
+      - name: Cache tooling bin/
+        uses: actions/cache@v4
+        with:
+          path: bin
+          key: ${{ runner.os }}-tools-${{ hashFiles('Makefile') }}
+
+      - name: Install controller-gen + envtest
+        run: make controller-gen envtest
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: "3.17.0"
+
+      # -----------------------------------------------------------------------
+      # kind cluster
+      # -----------------------------------------------------------------------
+      - uses: helm/kind-action@v1
+        with:
+          node_image: kindest/node:v${{ env.K8S_VERSION }}
+          cluster_name: kanary-e2e
+          config: .github/kind-config.yaml
+
+      # -----------------------------------------------------------------------
+      # Nginx Ingress Controller
+      # -----------------------------------------------------------------------
+      - name: Install Nginx Ingress Controller
+        run: |
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo update
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            --namespace ingress-nginx --create-namespace \
+            --set controller.service.type=NodePort \
+            --set controller.admissionWebhooks.enabled=false \
+            --wait --timeout 3m
+
+      # -----------------------------------------------------------------------
+      # Build + load operator image into kind
+      # -----------------------------------------------------------------------
+      - name: Build operator image
+        run: docker build -t kanary:e2e --build-arg VERSION=e2e .
+
+      - name: Load image into kind
+        run: kind load docker-image kanary:e2e --name kanary-e2e
+
+      # -----------------------------------------------------------------------
+      # Install operator via Helm
+      # -----------------------------------------------------------------------
+      - name: Install CRDs + operator
+        run: |
+          helm upgrade --install kanary charts/kanary \
+            --namespace kanary-system --create-namespace \
+            --set image.repository=kanary \
+            --set image.tag=e2e \
+            --set image.pullPolicy=Never \
+            --set scope.mode=cluster \
+            --set observability.serviceMonitor.enabled=false \
+            --set observability.prometheusRule.enabled=false \
+            --set webhooks.enabled=false \
+            --wait --timeout 3m
+
+      # -----------------------------------------------------------------------
+      # envtest suite (integration tests against the live cluster)
+      # -----------------------------------------------------------------------
+      - name: Run envtest suite
+        run: |
+          KUBEBUILDER_ASSETS="$(bin/setup-envtest use ${{ env.K8S_VERSION }} -p path)" \
+            go test -v -race -timeout 5m ./internal/controller/... ./internal/workload/...
+
+      # -----------------------------------------------------------------------
+      # Smoke test: manual canary happy path
+      # -----------------------------------------------------------------------
+      - name: Deploy stable app
+        run: |
+          kubectl create namespace smoke || true
+          kubectl create deployment nginx-stable \
+            --image=nginx:1.25 --replicas=1 -n smoke
+          kubectl expose deployment nginx-stable --port=80 -n smoke || true
+          kubectl wait deployment/nginx-stable -n smoke \
+            --for=condition=Available --timeout=60s
+
+      - name: Create stable Ingress
+        run: |
+          kubectl apply -f - <<'EOF'
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: nginx-stable
+            namespace: smoke
+            annotations:
+              nginx.ingress.kubernetes.io/canary: "false"
+          spec:
+            ingressClassName: nginx
+            rules:
+              - host: smoke.local
+                http:
+                  paths:
+                    - path: /
+                      pathType: Prefix
+                      backend:
+                        service:
+                          name: nginx-stable
+                          port:
+                            number: 80
+          EOF
+
+      - name: Apply Canary CR
+        run: |
+          kubectl apply -f - <<'EOF'
+          apiVersion: kanary.io/v1alpha1
+          kind: Canary
+          metadata:
+            name: nginx-stable
+            namespace: smoke
+            annotations:
+              deployment.kubernetes.io/revision: "1"
+          spec:
+            targetRef:
+              kind: Deployment
+              name: nginx-stable
+            service:
+              port: 80
+            trafficProvider:
+              type: nginx
+              ingressRef:
+                name: nginx-stable
+            strategy:
+              mode: Manual
+              steps:
+                - weight: 100
+            analysis:
+              enabled: false
+              provider:
+                type: prometheus
+          EOF
+
+      - name: Wait for Canary to reach Idle (stable revision seeded)
+        run: |
+          for i in $(seq 1 20); do
+            phase=$(kubectl get canary nginx-stable -n smoke \
+              -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            stable=$(kubectl get canary nginx-stable -n smoke \
+              -o jsonpath='{.status.stableRevision}' 2>/dev/null || echo "")
+            echo "phase=${phase} stableRevision=${stable}"
+            if [ -n "${stable}" ]; then
+              echo "StableRevision seeded — OK"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ERROR: StableRevision not seeded within 60s"
+          kubectl describe canary nginx-stable -n smoke
+          exit 1
+
+      - name: Trigger new revision (simulate deploy)
+        run: |
+          kubectl set image deployment/nginx-stable nginx=nginx:1.27 -n smoke
+          kubectl annotate deployment/nginx-stable \
+            deployment.kubernetes.io/revision=2 \
+            --overwrite -n smoke
+          kubectl annotate canary nginx-stable \
+            kanary.io/touched="$(date +%s)" \
+            --overwrite -n smoke
+
+      - name: Wait for AwaitingPromotion
+        run: |
+          for i in $(seq 1 20); do
+            phase=$(kubectl get canary nginx-stable -n smoke \
+              -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "phase=${phase}"
+            if [ "${phase}" = "AwaitingPromotion" ]; then
+              echo "Reached AwaitingPromotion — OK"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ERROR: did not reach AwaitingPromotion within 60s"
+          kubectl describe canary nginx-stable -n smoke
+          exit 1
+
+      - name: Promote canary
+        run: |
+          kubectl annotate canary nginx-stable \
+            kanary.io/promote=true --overwrite -n smoke
+
+      - name: Wait for Succeeded
+        run: |
+          for i in $(seq 1 20); do
+            phase=$(kubectl get canary nginx-stable -n smoke \
+              -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            echo "phase=${phase}"
+            if [ "${phase}" = "Succeeded" ]; then
+              echo "Canary Succeeded — OK"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "ERROR: did not reach Succeeded within 60s"
+          kubectl describe canary nginx-stable -n smoke
+          exit 1
+
+      # -----------------------------------------------------------------------
+      # Debug on failure
+      # -----------------------------------------------------------------------
+      - name: Dump operator logs on failure
+        if: failure()
+        run: |
+          kubectl logs -n kanary-system \
+            -l app.kubernetes.io/name=kanary --tail=100 || true
+          kubectl get events -n smoke --sort-by='.lastTimestamp' || true

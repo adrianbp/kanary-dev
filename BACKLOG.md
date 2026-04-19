@@ -42,6 +42,7 @@
 - [ ] **#014** Criar/gerenciar Deployment canary (cópia do stable, 1 réplica). _(area/controller)_
 - [ ] **#015** Criar/gerenciar Services stable/canary. _(area/controller)_
 - [ ] **#016** Suportar annotations `promote`, `abort`, `paused`, `canary-enabled`. _(area/controller, priority/p0)_
+- [ ] **#021** Annotation `kanary.io/weight` para override do peso do step atual enquanto canary está em Progressing. _(area/controller, priority/p1)_
 - [ ] **#017** Emitir K8s Events em cada transição. _(area/controller)_
 - [ ] **#018** Logging estruturado com `log/slog`. _(area/controller)_
 - [ ] **#019** Leader election opcional (`--enable-leader-election`). _(area/controller)_

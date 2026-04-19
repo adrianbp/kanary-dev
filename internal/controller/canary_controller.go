@@ -44,6 +44,7 @@ import (
 	"github.com/adrianbp/kanary-dev/internal/analysis"
 	"github.com/adrianbp/kanary-dev/internal/domain"
 	kerr "github.com/adrianbp/kanary-dev/internal/errors"
+	"github.com/adrianbp/kanary-dev/internal/telemetry"
 	"github.com/adrianbp/kanary-dev/internal/traffic"
 	"github.com/adrianbp/kanary-dev/internal/workload"
 )
@@ -93,6 +94,11 @@ type CanaryReconciler struct {
 
 // Reconcile is the main loop. Each call executes at most one state transition.
 func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	start := time.Now()
+	defer func() {
+		telemetry.ReconcileDuration.WithLabelValues("canary").Observe(time.Since(start).Seconds())
+	}()
+
 	logger := log.FromContext(ctx).WithValues("canary", req.NamespacedName)
 
 	canary := &kanaryv1alpha1.Canary{}
@@ -174,6 +180,7 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 		}
 		r.Recorder.Event(canary, corev1.EventTypeWarning, ReasonRolledBack, reason)
+		telemetry.CanaryRollbacksTotal.WithLabelValues(canary.Namespace, rollbackReason(canary)).Inc()
 
 	case domain.DecisionPromote:
 		// Canary becomes stable: reset traffic then clean up canary workload.
@@ -186,6 +193,7 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			}
 		}
 		r.Recorder.Event(canary, corev1.EventTypeNormal, ReasonSucceeded, reason)
+		telemetry.CanaryPromotionsTotal.WithLabelValues(canary.Namespace, "succeeded").Inc()
 
 	case domain.DecisionAdvance, domain.DecisionHold:
 		// Only reconcile traffic when there is an active canary; skip on idle/terminal phases
@@ -218,6 +226,8 @@ func (r *CanaryReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 					analysisResult.FailedChecks, len(analysisResult.Report.Results),
 					analysisResult.FailedChecks)
 			}
+			provider := string(canary.Spec.Analysis.Provider.Type)
+			telemetry.RecordAnalysisResult(provider, analysisResult.Report.Results)
 		}
 	}
 
@@ -390,6 +400,9 @@ func (r *CanaryReconciler) updateStatus(
 		canary.Status.StableRevision = deploymentRevision(target)
 	}
 
+	telemetry.SetPhase(canary.Namespace, canary.Name, phase)
+	telemetry.CanaryStepWeight.WithLabelValues(canary.Namespace, canary.Name).Set(float64(weight))
+
 	if analysisResult != nil {
 		canary.Status.FailedChecks = analysisResult.FailedChecks
 		report := analysisResult.Report
@@ -457,6 +470,14 @@ func requeueFor(p kanaryv1alpha1.Phase) time.Duration {
 	default:
 		return requeueIdle
 	}
+}
+
+// rollbackReason returns a stable label value for CanaryRollbacksTotal.
+func rollbackReason(canary *kanaryv1alpha1.Canary) string {
+	if canary.Annotations[kanaryv1alpha1.AnnotationAbort] == annotationTrue {
+		return "abort"
+	}
+	return "analysis_failed"
 }
 
 func clearCommandAnnotations(canary *kanaryv1alpha1.Canary) {

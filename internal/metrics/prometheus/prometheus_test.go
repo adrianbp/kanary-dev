@@ -83,3 +83,45 @@ func TestQuery_Unreachable(t *testing.T) {
 	_, err := p.Query(context.Background(), domain.MetricQuery{Name: "x", Query: "up"})
 	require.ErrorIs(t, err, kerr.ErrRetryable)
 }
+
+func TestQuery_InvalidJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`not json`))
+	}))
+	defer srv.Close()
+
+	p := prometheus.New(srv.URL)
+	_, err := p.Query(context.Background(), domain.MetricQuery{Name: "x", Query: "up"})
+	require.ErrorContains(t, err, "unmarshal")
+}
+
+func TestQuery_WrongTupleLength(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"status": "success",
+			"data": {"resultType": "vector", "result": [{"metric": {}, "value": [1700000000]}]}
+		}`))
+	}))
+	defer srv.Close()
+
+	p := prometheus.New(srv.URL)
+	_, err := p.Query(context.Background(), domain.MetricQuery{Name: "x", Query: "up"})
+	require.ErrorContains(t, err, "unexpected value tuple length")
+}
+
+func TestQuery_NonFloatValue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"status": "success",
+			"data": {"resultType": "vector", "result": [{"metric": {}, "value": [1700000000, "not-a-number"]}]}
+		}`))
+	}))
+	defer srv.Close()
+
+	p := prometheus.New(srv.URL)
+	_, err := p.Query(context.Background(), domain.MetricQuery{Name: "x", Query: "up"})
+	require.ErrorContains(t, err, "parse metric value")
+}

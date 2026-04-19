@@ -276,3 +276,49 @@ func TestCleanupCanary_IdempotentWhenAlreadyGone(t *testing.T) {
 
 	require.NoError(t, r.CleanupCanary(context.Background(), canary))
 }
+
+// ---------------------------------------------------------------------------
+// targetPort (via EnsureServices)
+// ---------------------------------------------------------------------------
+
+func TestEnsureServices_NamedTargetPort(t *testing.T) {
+	t.Parallel()
+	stable := stableDeployment("api", "prod")
+	canary := &kanaryv1alpha1.Canary{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "prod"},
+		Spec: kanaryv1alpha1.CanarySpec{
+			TargetRef: kanaryv1alpha1.TargetRef{Kind: "Deployment", Name: "api"},
+			Service:   kanaryv1alpha1.ServiceSpec{Port: 80, TargetPort: "http"},
+		},
+	}
+	c := fakeClient(t, stable, canary)
+	r := workload.New(c, newScheme(t))
+
+	require.NoError(t, r.EnsureServices(context.Background(), canary, stable))
+
+	svc := &corev1.Service{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: "api-canary", Namespace: "prod"}, svc))
+	require.Equal(t, "http", svc.Spec.Ports[0].TargetPort.String())
+}
+
+func TestEnsureServices_EmptyTargetPortFallsBackToPort(t *testing.T) {
+	t.Parallel()
+	stable := stableDeployment("api", "prod")
+	canary := &kanaryv1alpha1.Canary{
+		ObjectMeta: metav1.ObjectMeta{Name: "api", Namespace: "prod"},
+		Spec: kanaryv1alpha1.CanarySpec{
+			TargetRef: kanaryv1alpha1.TargetRef{Kind: "Deployment", Name: "api"},
+			Service:   kanaryv1alpha1.ServiceSpec{Port: 9090, TargetPort: ""},
+		},
+	}
+	c := fakeClient(t, stable, canary)
+	r := workload.New(c, newScheme(t))
+
+	require.NoError(t, r.EnsureServices(context.Background(), canary, stable))
+
+	svc := &corev1.Service{}
+	require.NoError(t, c.Get(context.Background(),
+		types.NamespacedName{Name: "api-canary", Namespace: "prod"}, svc))
+	require.Equal(t, int32(9090), svc.Spec.Ports[0].TargetPort.IntVal)
+}

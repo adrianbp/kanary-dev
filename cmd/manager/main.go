@@ -30,7 +30,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	kanaryv1alpha1 "github.com/adrianbp/kanary-dev/api/v1alpha1"
+	"github.com/adrianbp/kanary-dev/internal/analysis"
 	"github.com/adrianbp/kanary-dev/internal/controller"
+	"github.com/adrianbp/kanary-dev/internal/metrics/prometheus"
 	"github.com/adrianbp/kanary-dev/internal/traffic"
 	"github.com/adrianbp/kanary-dev/internal/traffic/nginx"
 	"github.com/adrianbp/kanary-dev/internal/traffic/openshift"
@@ -54,6 +56,7 @@ func main() {
 		enableLeader      bool
 		enableWebhooks    bool
 		watchNamespacesCS string
+		prometheusAddr    string
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address.")
@@ -62,6 +65,8 @@ func main() {
 	flag.BoolVar(&enableWebhooks, "webhooks-enabled", true, "Register webhook server (requires TLS certs).")
 	flag.StringVar(&watchNamespacesCS, "watch-namespaces", "",
 		"Comma-separated list of namespaces to watch. Empty means cluster-wide.")
+	flag.StringVar(&prometheusAddr, "prometheus-address", "",
+		"Prometheus endpoint for Progressive analysis (e.g. http://prometheus:9090). Empty disables analysis.")
 
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
@@ -99,12 +104,19 @@ func main() {
 	trafficFactory.Register(kanaryv1alpha1.TrafficProviderNginx, nginx.New(mgr.GetClient()))
 	trafficFactory.Register(kanaryv1alpha1.TrafficProviderOpenShiftRoute, openshift.New(mgr.GetClient()))
 
+	var analysisEngine *analysis.Engine
+	if prometheusAddr != "" {
+		analysisEngine = analysis.New(prometheus.New(prometheusAddr))
+		setupLog.Info("analysis engine enabled", "prometheus", prometheusAddr)
+	}
+
 	if err = (&controller.CanaryReconciler{
 		Client:             mgr.GetClient(),
 		Scheme:             mgr.GetScheme(),
 		Recorder:           mgr.GetEventRecorderFor("kanary-controller"),
 		TrafficFactory:     trafficFactory,
 		WorkloadReconciler: workload.New(mgr.GetClient(), mgr.GetScheme()),
+		AnalysisEngine:     analysisEngine,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Canary")
 		os.Exit(1)

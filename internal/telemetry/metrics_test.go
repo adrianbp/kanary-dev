@@ -10,15 +10,6 @@ import (
 	"github.com/adrianbp/kanary-dev/internal/telemetry"
 )
 
-func gaugeValue(t *testing.T, g interface {
-	WithLabelValues(...string) interface{ Write(*dto.Metric) error }
-}, lvs ...string) float64 {
-	t.Helper()
-	m := &dto.Metric{}
-	require.NoError(t, g.WithLabelValues(lvs...).Write(m))
-	return m.GetGauge().GetValue()
-}
-
 func TestSetPhase_SetsActivePhaseToOne(t *testing.T) {
 	t.Parallel()
 	telemetry.SetPhase("ns", "app", kanaryv1alpha1.PhaseProgressing)

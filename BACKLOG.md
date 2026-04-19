@@ -89,8 +89,8 @@
 ## Épico 7 — Observabilidade (M3)
 
 - [x] **#070** Registrar métricas Prometheus descritas no SPEC §9.2. _(area/metrics, priority/p0)_
-- [ ] **#071** `ServiceMonitor` no chart. _(area/chart)_
-- [ ] **#072** `PrometheusRule` com alertas §9.5. _(area/chart)_
+- [x] **#071** `ServiceMonitor` no chart. _(area/chart)_
+- [x] **#072** `PrometheusRule` com alertas §9.5. _(area/chart)_
 - [ ] **#073** Dashboard Grafana em `docs/dashboards/kanary.json`. _(area/docs)_
 - [ ] **#074** Flag `--otel-exporter` (stub para M5+). _(area/controller, priority/p3)_
 

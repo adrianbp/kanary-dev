@@ -107,8 +107,8 @@
 
 ## Épico 9 — Segurança & Hardening (M4)
 
-- [ ] **#090** Pod security context restrito; `nonroot`, `readOnlyRootFilesystem`. _(area/security, priority/p0)_
-- [ ] **#091** RBAC mínimo por escopo. _(area/security, priority/p0)_
+- [x] **#090** Pod security context restrito; `nonroot`, `readOnlyRootFilesystem`. _(area/security, priority/p0)_
+- [x] **#091** RBAC mínimo por escopo. _(area/security, priority/p0)_
 - [ ] **#092** SBOM (syft) + assinatura cosign no `release.yaml`. _(area/security)_
 - [ ] **#093** Auditoria de dependências (`govulncheck`) em CI. _(area/security)_
 - [ ] **#094** Threat model em `docs/security/threat-model.md`. _(area/security, area/docs)_

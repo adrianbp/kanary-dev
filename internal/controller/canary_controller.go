@@ -84,7 +84,8 @@ type CanaryReconciler struct {
 	ControllerOptions controller.Options
 }
 
-// +kubebuilder:rbac:groups=kanary.io,resources=canaries,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=kanary.io,resources=canaries,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update
 // +kubebuilder:rbac:groups=kanary.io,resources=canaries/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kanary.io,resources=canaries/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete

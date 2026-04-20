@@ -36,12 +36,20 @@ rules:
   - update
   - watch
 - apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
   - kanary.io
   resources:
   - canaries
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch

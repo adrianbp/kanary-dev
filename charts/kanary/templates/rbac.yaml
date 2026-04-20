@@ -18,7 +18,7 @@
   (dict
     "apiGroups" (list "kanary.io")
     "resources" (list "canaries")
-    "verbs" (list "create" "delete" "get" "list" "patch" "update" "watch"))
+    "verbs" (list "get" "list" "patch" "update" "watch"))
   (dict
     "apiGroups" (list "kanary.io")
     "resources" (list "canaries/finalizers")
@@ -31,6 +31,10 @@
     "apiGroups" (list "networking.k8s.io")
     "resources" (list "ingresses")
     "verbs" (list "create" "delete" "get" "list" "patch" "update" "watch"))
+  (dict
+    "apiGroups" (list "coordination.k8s.io")
+    "resources" (list "leases")
+    "verbs" (list "create" "get" "list" "update" "watch"))
 -}}
 
 {{- if eq $mode "cluster" }}

@@ -35,10 +35,10 @@ import (
 )
 
 var (
-	k8sClient           client.Client
-	testEnv             *envtest.Environment
-	ctx                 context.Context
-	cancel              context.CancelFunc
+	k8sClient            client.Client
+	testEnv              *envtest.Environment
+	ctx                  context.Context
+	cancel               context.CancelFunc
 	testAnalysisProvider = &fakeProvider{} // shared fake for Progressive mode tests
 )
 

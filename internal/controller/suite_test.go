@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kanaryv1alpha1 "github.com/adrianbp/kanary-dev/api/v1alpha1"
+	"github.com/adrianbp/kanary-dev/internal/analysis"
 	"github.com/adrianbp/kanary-dev/internal/controller"
 	"github.com/adrianbp/kanary-dev/internal/traffic"
 	"github.com/adrianbp/kanary-dev/internal/traffic/nginx"
@@ -34,10 +35,11 @@ import (
 )
 
 var (
-	k8sClient client.Client
-	testEnv   *envtest.Environment
-	ctx       context.Context
-	cancel    context.CancelFunc
+	k8sClient           client.Client
+	testEnv             *envtest.Environment
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	testAnalysisProvider = &fakeProvider{} // shared fake for Progressive mode tests
 )
 
 const testNamespace = "envtest"
@@ -93,6 +95,7 @@ var _ = BeforeSuite(func() {
 		Recorder:           record.NewFakeRecorder(100),
 		TrafficFactory:     trafficFactory,
 		WorkloadReconciler: workload.New(mgr.GetClient(), mgr.GetScheme()),
+		AnalysisEngine:     analysis.New(testAnalysisProvider),
 		ControllerOptions:  ctrlcontroller.Options{RateLimiter: slowRL},
 	}
 	Expect(rec.SetupWithManager(mgr)).To(Succeed())

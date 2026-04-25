@@ -32,6 +32,7 @@ import (
 	kanaryv1alpha1 "github.com/adrianbp/kanary-dev/api/v1alpha1"
 	"github.com/adrianbp/kanary-dev/internal/analysis"
 	"github.com/adrianbp/kanary-dev/internal/controller"
+	"github.com/adrianbp/kanary-dev/internal/metrics/dynatrace"
 	"github.com/adrianbp/kanary-dev/internal/metrics/prometheus"
 	"github.com/adrianbp/kanary-dev/internal/traffic"
 	"github.com/adrianbp/kanary-dev/internal/traffic/nginx"
@@ -57,6 +58,7 @@ func main() {
 		enableWebhooks    bool
 		watchNamespacesCS string
 		prometheusAddr    string
+		dynatraceAddr     string
 	)
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "Metrics endpoint address.")
@@ -67,6 +69,8 @@ func main() {
 		"Comma-separated list of namespaces to watch. Empty means cluster-wide.")
 	flag.StringVar(&prometheusAddr, "prometheus-address", "",
 		"Prometheus endpoint for Progressive analysis (e.g. http://prometheus:9090). Empty disables analysis.")
+	flag.StringVar(&dynatraceAddr, "dynatrace-address", "",
+		"Dynatrace environment URL for Progressive analysis (e.g. https://abc123.live.dynatrace.com). Token read from DYNATRACE_API_TOKEN env var.")
 
 	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
@@ -105,7 +109,16 @@ func main() {
 	trafficFactory.Register(kanaryv1alpha1.TrafficProviderOpenShiftRoute, openshift.New(mgr.GetClient()))
 
 	var analysisEngine *analysis.Engine
-	if prometheusAddr != "" {
+	switch {
+	case dynatraceAddr != "":
+		token := os.Getenv("DYNATRACE_API_TOKEN")
+		if token == "" {
+			setupLog.Error(nil, "DYNATRACE_API_TOKEN env var required when --dynatrace-address is set")
+			os.Exit(1)
+		}
+		analysisEngine = analysis.New(dynatrace.New(dynatraceAddr, token))
+		setupLog.Info("analysis engine enabled", "dynatrace", dynatraceAddr)
+	case prometheusAddr != "":
 		analysisEngine = analysis.New(prometheus.New(prometheusAddr))
 		setupLog.Info("analysis engine enabled", "prometheus", prometheusAddr)
 	}

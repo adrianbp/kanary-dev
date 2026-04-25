@@ -159,6 +159,38 @@ jobs:
         with:
           files: /tmp/chart/kanary-*.tgz
 
+      - name: Generate merged Helm repo index
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          TAG="${{ github.ref_name }}"
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          PAGES_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+
+          mkdir -p /tmp/helm-pages
+
+          # Copy packaged chart so helm can read its metadata
+          cp /tmp/chart/kanary-${VERSION}.tgz /tmp/helm-pages/
+
+          # Merge with existing index (silent fail on first release)
+          curl -sSfL "${PAGES_URL}/index.yaml" -o /tmp/old-index.yaml 2>/dev/null || true
+          if [ -f /tmp/old-index.yaml ]; then
+            helm repo index /tmp/helm-pages --url "${RELEASE_URL}" --merge /tmp/old-index.yaml
+          else
+            helm repo index /tmp/helm-pages --url "${RELEASE_URL}"
+          fi
+
+          # Remove .tgz — index.yaml already references GitHub Release asset URLs
+          rm /tmp/helm-pages/kanary-${VERSION}.tgz
+          touch /tmp/helm-pages/.nojekyll
+
+      - name: Publish Helm repo index to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: /tmp/helm-pages
+          keep_files: true
+
   # -------------------------------------------------------------------------
   # Create GitHub Release with changelog
   # -------------------------------------------------------------------------
